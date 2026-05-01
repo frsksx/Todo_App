@@ -1,0 +1,50 @@
+<Window x:Class="WindowsTrayTasks.Views.QuickAddWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Quick Add"
+        Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="ToolWindow"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="#FAFAFA"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True">
+    <StackPanel Margin="14">
+        <TextBlock Text="Task" FontSize="11" Foreground="#666666"/>
+        <TextBox x:Name="TitleBox" Padding="8,6" FontSize="15" Margin="0,2,0,8"/>
+
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                <TextBlock Text="Page" FontSize="11" Foreground="#666666"/>
+                <ComboBox x:Name="PageCombo" Margin="0,2,0,0" DisplayMemberPath="Name" SelectionChanged="PageCombo_SelectionChanged"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="6,0,6,0">
+                <TextBlock Text="Heading (optional)" FontSize="11" Foreground="#666666"/>
+                <ComboBox x:Name="HeadingCombo" Margin="0,2,0,0" DisplayMemberPath="Title"/>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Margin="6,0,0,0">
+                <TextBlock Text="Reminder (yyyy-MM-dd HH:mm or +5m / +2h / +1d)" FontSize="11" Foreground="#666666"/>
+                <TextBox x:Name="ReminderBox" Padding="6,4" Margin="0,2,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <CheckBox x:Name="KeepOpenCheck" Grid.Column="0" Content="Save and add another" VerticalAlignment="Center" Foreground="#666666"/>
+            <Button Grid.Column="1" Content="Cancel" Width="84" Margin="0,0,8,0" Click="Cancel_Click" IsCancel="True"/>
+            <Button Grid.Column="2" Content="Save" Width="84" Click="Save_Click" IsDefault="True"/>
+        </Grid>
+        <TextBlock x:Name="HintText" Margin="0,8,0,0" Foreground="#888888" FontSize="11"/>
+    </StackPanel>
+</Window>

@@ -1,0 +1,100 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="4e3ef581-21a9-4a9d-b559-e2ab5745ff10" name="frsks@WORKSTATION 2026-05-01 13:41:28" runUser="WORKSTATION\frsks" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-05-01T13:41:28.6171382+02:00" queuing="2026-05-01T13:41:28.6171383+02:00" start="2026-05-01T13:41:27.7499355+02:00" finish="2026-05-01T13:41:28.7080623+02:00" />
+  <TestSettings name="default" id="dd02f80c-dc58-410a-8fab-ee7a631dba9f">
+    <Deployment runDeploymentRoot="frsks_WORKSTATION_2026-05-01_13_41_28" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="c823ae8f-4632-4571-95a8-c6fe535da9fd" testId="b00562b7-ded7-4522-8fa2-8dd6a86ddd2a" testName="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveHeading_RoundTrips" computerName="WORKSTATION" duration="00:00:00.0497612" startTime="2026-05-01T13:41:28.6251476+02:00" endTime="2026-05-01T13:41:28.6251479+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c823ae8f-4632-4571-95a8-c6fe535da9fd" />
+    <UnitTestResult executionId="4366d98d-e07a-4040-ab04-c1123f298650" testId="ae2287ef-dc7a-a5b8-6d05-b69a268c96ad" testName="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveReminder_RoundTrips" computerName="WORKSTATION" duration="00:00:00.0324360" startTime="2026-05-01T13:41:28.6576904+02:00" endTime="2026-05-01T13:41:28.6576906+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4366d98d-e07a-4040-ab04-c1123f298650" />
+    <UnitTestResult executionId="209c535b-f786-4eb1-8518-55d139032b61" testId="cf9cd030-5900-1710-d32a-e523217c8424" testName="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_SameTagNameOnDifferentPages_CreatesSeparateTags" computerName="WORKSTATION" duration="00:00:00.0294920" startTime="2026-05-01T13:41:28.6099059+02:00" endTime="2026-05-01T13:41:28.6099061+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="209c535b-f786-4eb1-8518-55d139032b61" />
+    <UnitTestResult executionId="f69eb245-4c69-4ec1-9a83-a743ded0e641" testId="978c0d9e-6e8e-9873-d9a8-414ebb91d3d5" testName="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_SaveHeadingAndTask_AreScopedByPage" computerName="WORKSTATION" duration="00:00:00.0398699" startTime="2026-05-01T13:41:28.4976907+02:00" endTime="2026-05-01T13:41:28.4976910+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f69eb245-4c69-4ec1-9a83-a743ded0e641" />
+    <UnitTestResult executionId="1f50ae97-514f-4fe4-b80e-30873a65351f" testId="97e3dc84-3d5c-d4cb-d3bc-9eb2bbe196f0" testName="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_InlineTitleChange_ReconcilesTaskTags" computerName="WORKSTATION" duration="00:00:00.0578819" startTime="2026-05-01T13:41:28.6678550+02:00" endTime="2026-05-01T13:41:28.6678552+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1f50ae97-514f-4fe4-b80e-30873a65351f" />
+    <UnitTestResult executionId="30f79500-90f0-4a04-bd37-4407acae94d4" testId="32d717d7-1787-36ce-ae97-13c2c87069e5" testName="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_SaveTaskWithAtTokens_CreatesPageScopedTags" computerName="WORKSTATION" duration="00:00:00.0490615" startTime="2026-05-01T13:41:28.5803079+02:00" endTime="2026-05-01T13:41:28.5803086+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="30f79500-90f0-4a04-bd37-4407acae94d4" />
+    <UnitTestResult executionId="21f5556d-0a97-4a35-9e7c-e496128a0354" testId="bdee60a4-8535-a899-b75a-2486739c9096" testName="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_FreshInit_CreatesDefaultPage" computerName="WORKSTATION" duration="00:00:00.2532954" startTime="2026-05-01T13:41:28.4577412+02:00" endTime="2026-05-01T13:41:28.4577418+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="21f5556d-0a97-4a35-9e7c-e496128a0354" />
+    <UnitTestResult executionId="b41cc427-85bd-4bda-b125-2c432100d9b4" testId="2a6248b2-6941-4162-de32-3f58f45d9157" testName="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveTask_EmptyId_IsRejected" computerName="WORKSTATION" duration="00:00:00.0300152" startTime="2026-05-01T13:41:28.5752744+02:00" endTime="2026-05-01T13:41:28.5752747+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b41cc427-85bd-4bda-b125-2c432100d9b4" />
+    <UnitTestResult executionId="5c903f94-2725-4f91-88fa-b7ead8e40f9c" testId="f430b569-06d8-06ab-7ea9-6bb5417e4b98" testName="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_ActivePage_RoundTripsThroughSettings" computerName="WORKSTATION" duration="00:00:00.0333846" startTime="2026-05-01T13:41:28.5311700+02:00" endTime="2026-05-01T13:41:28.5311704+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5c903f94-2725-4f91-88fa-b7ead8e40f9c" />
+    <UnitTestResult executionId="7f8952ab-cf72-439c-9f08-d030c1138312" testId="2471e77e-14e8-6d96-3fbf-1323638c3e5e" testName="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveReminder_SecondActiveReminderForSameTask_IsRejected" computerName="WORKSTATION" duration="00:00:00.0474027" startTime="2026-05-01T13:41:28.5451768+02:00" endTime="2026-05-01T13:41:28.5451770+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7f8952ab-cf72-439c-9f08-d030c1138312" />
+    <UnitTestResult executionId="c163b02f-1180-418e-9bcd-141632580a66" testId="4881a1bb-574f-3f26-c0c6-b103fa288f5b" testName="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveTask_RoundTripsThroughReopenedConnection" computerName="WORKSTATION" duration="00:00:00.0534119" startTime="2026-05-01T13:41:28.4977426+02:00" endTime="2026-05-01T13:41:28.4977426+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c163b02f-1180-418e-9bcd-141632580a66" />
+    <UnitTestResult executionId="a0e90e08-d02c-4a98-ac45-eead746a8632" testId="f514f7bc-b918-3a36-3a65-3e2b720d4aaa" testName="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.CreateTemp_DisposeDeletesDatabaseFiles" computerName="WORKSTATION" duration="00:00:00.2379041" startTime="2026-05-01T13:41:28.4445157+02:00" endTime="2026-05-01T13:41:28.4445275+02:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a0e90e08-d02c-4a98-ac45-eead746a8632" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_SameTagNameOnDifferentPages_CreatesSeparateTags" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="cf9cd030-5900-1710-d32a-e523217c8424">
+      <Execution id="209c535b-f786-4eb1-8518-55d139032b61" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.PageTests" name="Database_SameTagNameOnDifferentPages_CreatesSeparateTags" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveReminder_SecondActiveReminderForSameTask_IsRejected" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="2471e77e-14e8-6d96-3fbf-1323638c3e5e">
+      <Execution id="7f8952ab-cf72-439c-9f08-d030c1138312" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests" name="SaveReminder_SecondActiveReminderForSameTask_IsRejected" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_FreshInit_CreatesDefaultPage" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="bdee60a4-8535-a899-b75a-2486739c9096">
+      <Execution id="21f5556d-0a97-4a35-9e7c-e496128a0354" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.PageTests" name="Database_FreshInit_CreatesDefaultPage" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_SaveTaskWithAtTokens_CreatesPageScopedTags" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="32d717d7-1787-36ce-ae97-13c2c87069e5">
+      <Execution id="30f79500-90f0-4a04-bd37-4407acae94d4" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.PageTests" name="Database_SaveTaskWithAtTokens_CreatesPageScopedTags" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_SaveHeadingAndTask_AreScopedByPage" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="978c0d9e-6e8e-9873-d9a8-414ebb91d3d5">
+      <Execution id="f69eb245-4c69-4ec1-9a83-a743ded0e641" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.PageTests" name="Database_SaveHeadingAndTask_AreScopedByPage" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.CreateTemp_DisposeDeletesDatabaseFiles" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="f514f7bc-b918-3a36-3a65-3e2b720d4aaa">
+      <Execution id="a0e90e08-d02c-4a98-ac45-eead746a8632" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests" name="CreateTemp_DisposeDeletesDatabaseFiles" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveReminder_RoundTrips" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="ae2287ef-dc7a-a5b8-6d05-b69a268c96ad">
+      <Execution id="4366d98d-e07a-4040-ab04-c1123f298650" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests" name="SaveReminder_RoundTrips" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_ActivePage_RoundTripsThroughSettings" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="f430b569-06d8-06ab-7ea9-6bb5417e4b98">
+      <Execution id="5c903f94-2725-4f91-88fa-b7ead8e40f9c" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.PageTests" name="Database_ActivePage_RoundTripsThroughSettings" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveTask_RoundTripsThroughReopenedConnection" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="4881a1bb-574f-3f26-c0c6-b103fa288f5b">
+      <Execution id="c163b02f-1180-418e-9bcd-141632580a66" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests" name="SaveTask_RoundTripsThroughReopenedConnection" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.PageTests.Database_InlineTitleChange_ReconcilesTaskTags" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="97e3dc84-3d5c-d4cb-d3bc-9eb2bbe196f0">
+      <Execution id="1f50ae97-514f-4fe4-b80e-30873a65351f" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.PageTests" name="Database_InlineTitleChange_ReconcilesTaskTags" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveTask_EmptyId_IsRejected" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="2a6248b2-6941-4162-de32-3f58f45d9157">
+      <Execution id="b41cc427-85bd-4bda-b125-2c432100d9b4" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests" name="SaveTask_EmptyId_IsRejected" />
+    </UnitTest>
+    <UnitTest name="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests.SaveHeading_RoundTrips" storage="c:\users\frsks\onedrive\desktop\repositories\todo-app\tests\infrastructure.tests\bin\debug\net9.0\windowstraytasks.infrastructure.tests.dll" id="b00562b7-ded7-4522-8fa2-8dd6a86ddd2a">
+      <Execution id="c823ae8f-4632-4571-95a8-c6fe535da9fd" />
+      <TestMethod codeBase="C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\Infrastructure.Tests\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="WindowsTrayTasks.Infrastructure.Tests.DatabaseTests" name="SaveHeading_RoundTrips" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="b00562b7-ded7-4522-8fa2-8dd6a86ddd2a" executionId="c823ae8f-4632-4571-95a8-c6fe535da9fd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ae2287ef-dc7a-a5b8-6d05-b69a268c96ad" executionId="4366d98d-e07a-4040-ab04-c1123f298650" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cf9cd030-5900-1710-d32a-e523217c8424" executionId="209c535b-f786-4eb1-8518-55d139032b61" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="978c0d9e-6e8e-9873-d9a8-414ebb91d3d5" executionId="f69eb245-4c69-4ec1-9a83-a743ded0e641" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="97e3dc84-3d5c-d4cb-d3bc-9eb2bbe196f0" executionId="1f50ae97-514f-4fe4-b80e-30873a65351f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="32d717d7-1787-36ce-ae97-13c2c87069e5" executionId="30f79500-90f0-4a04-bd37-4407acae94d4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="bdee60a4-8535-a899-b75a-2486739c9096" executionId="21f5556d-0a97-4a35-9e7c-e496128a0354" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2a6248b2-6941-4162-de32-3f58f45d9157" executionId="b41cc427-85bd-4bda-b125-2c432100d9b4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f430b569-06d8-06ab-7ea9-6bb5417e4b98" executionId="5c903f94-2725-4f91-88fa-b7ead8e40f9c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2471e77e-14e8-6d96-3fbf-1323638c3e5e" executionId="7f8952ab-cf72-439c-9f08-d030c1138312" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4881a1bb-574f-3f26-c0c6-b103fa288f5b" executionId="c163b02f-1180-418e-9bcd-141632580a66" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f514f7bc-b918-3a36-3a65-3e2b720d4aaa" executionId="a0e90e08-d02c-4a98-ac45-eead746a8632" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="12" executed="12" passed="12" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 9.0.4)&#xD;
+[xUnit.net 00:00:00.05]   Discovering: WindowsTrayTasks.Infrastructure.Tests&#xD;
+[xUnit.net 00:00:00.08]   Discovered:  WindowsTrayTasks.Infrastructure.Tests&#xD;
+[xUnit.net 00:00:00.08]   Starting:    WindowsTrayTasks.Infrastructure.Tests&#xD;
+[xUnit.net 00:00:00.57]   Finished:    WindowsTrayTasks.Infrastructure.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

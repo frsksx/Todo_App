@@ -1,0 +1,17 @@
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\bin\Debug\net9.0\WindowsTrayTasks.TestSupport.deps.json
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\bin\Debug\net9.0\WindowsTrayTasks.TestSupport.dll
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\bin\Debug\net9.0\WindowsTrayTasks.TestSupport.pdb
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\bin\Debug\net9.0\WindowsTrayTasks.Domain.dll
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.dll
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\bin\Debug\net9.0\WindowsTrayTasks.Domain.pdb
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\bin\Debug\net9.0\WindowsTrayTasks.Infrastructure.pdb
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\WindowsTrayTasks.TestSupport.csproj.AssemblyReference.cache
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\WindowsTrayTasks.TestSupport.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\WindowsTrayTasks.TestSupport.AssemblyInfoInputs.cache
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\WindowsTrayTasks.TestSupport.AssemblyInfo.cs
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\WindowsTrayTasks.TestSupport.csproj.CoreCompileInputs.cache
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\WindowsT.32C70B19.Up2Date
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\WindowsTrayTasks.TestSupport.dll
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\refint\WindowsTrayTasks.TestSupport.dll
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\WindowsTrayTasks.TestSupport.pdb
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\tests\TestSupport\obj\Debug\net9.0\ref\WindowsTrayTasks.TestSupport.dll

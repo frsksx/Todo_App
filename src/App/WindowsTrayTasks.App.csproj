@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>WindowsTrayTasks</RootNamespace>
+    <AssemblyName>WindowsTrayTasks</AssemblyName>
+    <ApplicationIcon></ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\WindowsTrayTasks.Domain.csproj" />
+    <ProjectReference Include="..\Infrastructure\WindowsTrayTasks.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
