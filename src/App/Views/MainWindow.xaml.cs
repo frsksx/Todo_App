@@ -31,7 +31,7 @@ public sealed class TaskRowVm
     public bool IsEditingHeading { get; init; }
     public string EditHeadingTitle { get; set; } = "";
     public string HeadingChevron => IsNewHeading || HeadingId is null ? "" : HeadingCollapsed ? "▶" : "▾";
-    public string HeadingDisplay => $"{HeadingTitle} ({HeadingCount})";
+    public string HeadingDisplay => HeadingTitle;
     public string HeadingFocusText => IsFocusedHeading ? "Focused" : "";
     public Visibility HeadingTitleVisibility => IsEditingHeading ? Visibility.Collapsed : Visibility.Visible;
     public Visibility HeadingEditorVisibility => IsEditingHeading ? Visibility.Visible : Visibility.Collapsed;
@@ -50,8 +50,8 @@ public sealed class TaskRowVm
         TaskState.Action => "○",
         TaskState.Next => "○",
         TaskState.OnHold => "Ⅱ",
-        TaskState.Waiting => "…",
-        TaskState.Someday => "•",
+        TaskState.Waiting => "⏱",
+        TaskState.Someday => "☁",
         TaskState.Done => "✓",
         _ => "○",
     };
@@ -102,14 +102,10 @@ public sealed class TaskRowVm
             if (DueAt is null) return "";
             var dueDate = DueAt.Value.ToLocalTime().Date;
             var days = (dueDate - DateTime.Today).Days;
-            if (days is >= 0 and <= 14)
-                return days switch
-                {
-                    0 => "due today",
-                    1 => "1 day remaining",
-                    _ => $"{days} days remaining",
-                };
-            return $"due {ToLocal(DueAt.Value)}";
+            if (days < 0) return $"{-days}d overdue";
+            if (days == 0) return "due today";
+            if (days <= 14) return $"in {days}d";
+            return DueAt.Value.ToLocalTime().ToString("yyyy-MM-dd");
         }
     }
     public string NotesText => string.IsNullOrWhiteSpace(Notes) ? "No notes" : Notes!;
@@ -146,6 +142,27 @@ public sealed class TaskRowVm
     public Brush TitleBrush => State == TaskState.Done
         ? new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99))
         : new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22));
+
+    public System.Windows.TextDecorationCollection? TitleDecorations =>
+        State == TaskState.Done ? System.Windows.TextDecorations.Strikethrough : null;
+
+    public Brush DueBrush
+    {
+        get
+        {
+            if (DueAt is null) return new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77));
+            var days = (DueAt.Value.ToLocalTime().Date - DateTime.Today).Days;
+            return days < 7
+                ? new SolidColorBrush(Color.FromRgb(0xC8, 0x3C, 0x3C))
+                : new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77));
+        }
+    }
+
+    public FontWeight StateGlyphFontWeight =>
+        State is TaskState.Action or TaskState.Next ? FontWeights.Bold : FontWeights.SemiBold;
+
+    public FontStyle HeadingFontStyle =>
+        HeadingId is null ? FontStyles.Italic : FontStyles.Normal;
 
     public Brush ReminderBrush => ReminderOverdue
         ? new SolidColorBrush(Color.FromRgb(0xC8, 0x3C, 0x3C))
@@ -243,10 +260,16 @@ public partial class MainWindow : Window
     private FrameworkElement? _insertionElement;
     private bool _insertionAfter;
     private bool _isQuitting;
+    private readonly Dictionary<Guid, DateTime> _recentlyCompletedAt = new();
+    private Guid? _renamingPageId;
+    private bool _creatingNewTag;
+    private System.Windows.Threading.DispatcherTimer? _pageHoverTimer;
+    private Guid _pageHoverTargetId;
+    private Point _tagDragStart;
 
-    private sealed record DragPayload(string Kind, Guid Id)
+    private sealed record DragPayload(string Kind, Guid Id, string TagName = "")
     {
-        public override string ToString() => $"{Kind}:{Id}";
+        public override string ToString() => Kind == "tag" ? $"tag:{TagName}" : $"{Kind}:{Id}";
 
         public static bool TryParse(object? raw, out DragPayload payload)
         {
@@ -254,7 +277,13 @@ public partial class MainWindow : Window
             var text = raw as string;
             if (string.IsNullOrWhiteSpace(text)) return false;
             var parts = text.Split(':', 2);
-            if (parts.Length != 2 || !Guid.TryParse(parts[1], out var id)) return false;
+            if (parts.Length != 2) return false;
+            if (parts[0] == "tag" && !string.IsNullOrWhiteSpace(parts[1]))
+            {
+                payload = new DragPayload("tag", Guid.Empty, parts[1]);
+                return true;
+            }
+            if (!Guid.TryParse(parts[1], out var id)) return false;
             if (parts[0] is not ("task" or "heading")) return false;
             payload = new DragPayload(parts[0], id);
             return true;
@@ -272,12 +301,10 @@ public partial class MainWindow : Window
         InitializeComponent();
         RestoreWindowPlacement();
 
-        FilterCombo.ItemsSource = new[] { "All", "Actions + Next", "Only Next", "All except Done", "Show All", "Only On Hold", "Only Waiting For", "Only Someday/Maybe", "Only Completed" };
+        var filterItems = new List<string> { "All", "Actions + Next", "Only Next", "All except Done", "Show All", "Only On Hold", "Only Waiting For", "Only Someday/Maybe", "Only Completed" };
+        filterItems.AddRange(Perspective.BuiltIns.Select(p => p.Name));
+        FilterCombo.ItemsSource = filterItems;
         FilterCombo.SelectedIndex = 0;
-        DateFilterCombo.ItemsSource = new[] { "All dates", "Today", "Tomorrow", "This week", "Upcoming", "Overdue", "No date" };
-        DateFilterCombo.SelectedIndex = 0;
-        PerspectiveCombo.ItemsSource = Perspective.BuiltIns.Select(p => p.Name).ToArray();
-        PerspectiveCombo.SelectedIndex = -1;
 
         Loaded += (_, _) => { Refresh(); SearchBox.Focus(); };
         Closing += OnClosing;
@@ -300,19 +327,23 @@ public partial class MainWindow : Window
 
     public void ToggleVisibility()
     {
-        if (IsVisible)
-        {
-            SaveCurrentPageViewState();
-            SaveWindowPlacement();
-            Hide();
-        }
-        else
-        {
-            Show();
-            Activate();
-            SearchBox.Focus();
-            Refresh();
-        }
+        if (IsVisible) HideToTray();
+        else ShowAndActivate();
+    }
+
+    public void ShowAndActivate()
+    {
+        Show();
+        Activate();
+        SearchBox.Focus();
+        Refresh();
+    }
+
+    public void HideToTray()
+    {
+        SaveCurrentPageViewState();
+        SaveWindowPlacement();
+        Hide();
     }
 
     public void ShowForInlineTask()
@@ -381,12 +412,46 @@ public partial class MainWindow : Window
             _activePageId = _db.GetActivePageId();
         }
 
+        var summaries = _db.GetPageTaskSummaries();
+
         PageTabs.Children.Clear();
         foreach (var page in _pages)
         {
+            var isRenaming = _renamingPageId == page.Id;
+            UIElement tabContent;
+            if (isRenaming)
+            {
+                var editor = new TextBox
+                {
+                    Text = page.Name,
+                    DataContext = page,
+                    FontSize = 12,
+                    MinWidth = 60,
+                    Padding = new Thickness(2, 0, 2, 0),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x8D, 0xB8, 0xE8)),
+                };
+                editor.KeyDown += PageNameEditor_KeyDown;
+                editor.LostFocus += PageNameEditor_LostFocus;
+                tabContent = editor;
+                Dispatcher.BeginInvoke(() => { editor.Focus(); editor.SelectAll(); });
+            }
+            else
+            {
+                summaries.TryGetValue(page.Id, out var s);
+                tabContent = new TextBlock
+                {
+                    Text = page.Name,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = s.HasUrgentDue
+                        ? new SolidColorBrush(Color.FromRgb(0xA0, 0x20, 0x20))
+                        : Brushes.Black,
+                    FontStyle = !s.HasNextActions ? FontStyles.Italic : FontStyles.Normal,
+                };
+            }
+
             var button = new Button
             {
-                Content = page.Name,
+                Content = tabContent,
                 DataContext = page,
                 Padding = new Thickness(8, 2, 8, 2),
                 Margin = new Thickness(0, 0, 4, 0),
@@ -397,7 +462,9 @@ public partial class MainWindow : Window
                 AllowDrop = true,
             };
             button.Click += PageTab_Click;
+            button.MouseDoubleClick += PageTab_DoubleClick;
             button.DragOver += PageTab_DragOver;
+            button.DragLeave += PageTab_DragLeave;
             button.Drop += PageTab_Drop;
             button.ContextMenu = BuildPageContextMenu(page);
             PageTabs.Children.Add(button);
@@ -430,7 +497,13 @@ public partial class MainWindow : Window
     }
 
     private IEnumerable<TaskItem> ApplyCurrentFilters(IEnumerable<TaskItem> tasks, IReadOnlyDictionary<Guid, Reminder> reminders, DateTime now)
-        => TaskFilter.Apply(tasks, reminders, new ComposedFilterCriteria(
+    {
+        // Expire 5-minute grace window
+        var expiry = DateTime.UtcNow.AddMinutes(-5);
+        foreach (var key in _recentlyCompletedAt.Keys.Where(k => _recentlyCompletedAt[k] < expiry).ToList())
+            _recentlyCompletedAt.Remove(key);
+
+        var filtered = TaskFilter.Apply(tasks, reminders, new ComposedFilterCriteria(
             PageId: _activePageId,
             StateMode: _filterMode,
             IncludeDone: _includeDone,
@@ -440,7 +513,18 @@ public partial class MainWindow : Window
             UntaggedOnly: _untaggedOnly,
             FocusedHeadingId: _focusedHeadingId,
             NowUtc: now,
-            InboxOnly: _inboxOnly));
+            InboxOnly: _inboxOnly)).ToList();
+
+        // Keep recently-completed tasks visible for 5 minutes even when Done is hidden
+        if (_recentlyCompletedAt.Count > 0 && !_includeDone)
+        {
+            var filteredIds = filtered.Select(t => t.Id).ToHashSet();
+            var extras = tasks.Where(t => _recentlyCompletedAt.ContainsKey(t.Id) && !filteredIds.Contains(t.Id));
+            filtered.AddRange(extras);
+        }
+
+        return filtered;
+    }
 
     private List<TaskRowVm> BuildRows(
         IReadOnlyList<Heading> headings,
@@ -482,8 +566,8 @@ public partial class MainWindow : Window
             && noHeadingTasks.Count > 0
             && (!_focusedHeadingId.HasValue || _focusedHeadingId.Value == Guid.Empty))
         {
-            rows.Add(CreateHeadingRow(null, "No Project", noHeadingTasks.Count, collapsed: false));
-            rows.AddRange(noHeadingTasks.Select(t => CreateTaskRow(t, "No Project", reminders, now)));
+            rows.Add(CreateHeadingRow(null, "Inbox", noHeadingTasks.Count, collapsed: false));
+            rows.AddRange(noHeadingTasks.Select(t => CreateTaskRow(t, "Inbox", reminders, now)));
         }
 
         return rows;
@@ -619,31 +703,20 @@ public partial class MainWindow : Window
 
     private void FilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        _filterMode = (string?)FilterCombo.SelectedItem ?? "All";
-        Refresh();
-    }
-
-    private void DateFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        _dateBucket = ((string?)DateFilterCombo.SelectedItem) switch
+        var selected = (string?)FilterCombo.SelectedItem;
+        if (selected is null) return;
+        var perspective = Perspective.BuiltIns.FirstOrDefault(p => p.Name == selected);
+        if (perspective is not null)
         {
-            "Today" => DateFilterBucket.Today,
-            "Tomorrow" => DateFilterBucket.Tomorrow,
-            "This week" => DateFilterBucket.ThisWeek,
-            "Upcoming" => DateFilterBucket.Upcoming,
-            "Overdue" => DateFilterBucket.Overdue,
-            "No date" => DateFilterBucket.NoDate,
-            _ => DateFilterBucket.All,
-        };
-        Refresh();
-    }
-
-    private void PerspectiveCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        var name = (string?)PerspectiveCombo.SelectedItem;
-        if (name is null) return;
-        var p = Perspective.BuiltIns.FirstOrDefault(x => x.Name == name);
-        if (p is not null) SetPerspective(p);
+            SetPerspective(perspective);
+        }
+        else
+        {
+            _filterMode = selected;
+            _forecastMode = false;
+            _inboxOnly = false;
+            Refresh();
+        }
     }
 
     private void SetPerspective(Perspective p)
@@ -654,9 +727,6 @@ public partial class MainWindow : Window
         {
             _filterMode = c.StateMode;
             _includeDone = c.IncludeDone;
-            FilterCombo.SelectionChanged -= FilterCombo_SelectionChanged;
-            FilterCombo.SelectedItem = _filterMode;
-            FilterCombo.SelectionChanged += FilterCombo_SelectionChanged;
             ShowDoneCheck.IsChecked = _includeDone;
         }
         Refresh();
@@ -750,19 +820,19 @@ public partial class MainWindow : Window
     private void MenuForecast_Click(object sender, RoutedEventArgs e)
     {
         var p = Perspective.BuiltIns.First(x => x.Kind == PerspectiveKind.Forecast);
-        PerspectiveCombo.SelectedItem = p.Name;
+        FilterCombo.SelectedItem = p.Name;
     }
 
     private void MenuInbox_Click(object sender, RoutedEventArgs e)
     {
         var p = Perspective.BuiltIns.First(x => x.Kind == PerspectiveKind.Inbox);
-        PerspectiveCombo.SelectedItem = p.Name;
+        FilterCombo.SelectedItem = p.Name;
     }
 
     private void MenuAvailable_Click(object sender, RoutedEventArgs e)
     {
         var p = Perspective.BuiltIns.First(x => x.Kind == PerspectiveKind.Available);
-        PerspectiveCombo.SelectedItem = p.Name;
+        FilterCombo.SelectedItem = p.Name;
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
@@ -792,23 +862,54 @@ public partial class MainWindow : Window
         foreach (var tag in _db.GetTags(_activePageId))
         {
             counts.TryGetValue(tag.Id, out var count);
-            TagBar.Children.Add(CreateTagButton(tag.Name, $"@{tag.DisplayName} ({count})", _selectedTags.Contains(tag.Name)));
+            TagBar.Children.Add(CreateTagButton(tag.Name, $"@{tag.DisplayName} ({count})", _selectedTags.Contains(tag.Name), tag.DisplayName));
+        }
+
+        if (_creatingNewTag)
+        {
+            var editor = new TextBox
+            {
+                Width = 90,
+                FontSize = 11,
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(0, 0, 4, 2),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x8D, 0xB8, 0xE8)),
+                ToolTip = "@tag name — Enter to create, Esc to cancel",
+            };
+            editor.KeyDown += NewTagEditor_KeyDown;
+            editor.LostFocus += NewTagEditor_LostFocus;
+            TagBar.Children.Add(editor);
         }
     }
 
-    private Button CreateTagButton(string key, string text, bool selected)
+    private Button CreateTagButton(string key, string text, bool selected, string? dragTagDisplayName = null)
     {
         var button = new Button
         {
             Content = text,
             DataContext = key,
-            Padding = new Thickness(6, 1, 6, 1),
-            Margin = new Thickness(0, 0, 4, 2),
+            Padding = new Thickness(4, 1, 4, 1),
+            Margin = new Thickness(0, 0, 6, 2),
             FontSize = 11,
             Background = selected ? new SolidColorBrush(Color.FromRgb(0xE3, 0xF0, 0xFF)) : Brushes.Transparent,
-            BorderBrush = selected ? new SolidColorBrush(Color.FromRgb(0x8D, 0xB8, 0xE8)) : new SolidColorBrush(Color.FromRgb(0xDD, 0xDD, 0xDD)),
+            BorderThickness = new Thickness(0),
+            Foreground = selected
+                ? new SolidColorBrush(Color.FromRgb(0x22, 0x55, 0xAA))
+                : new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
         };
         button.Click += TagButton_Click;
+        if (dragTagDisplayName is not null)
+        {
+            button.PreviewMouseLeftButtonDown += (_, e) => _tagDragStart = e.GetPosition(null);
+            button.MouseMove += (_, e) =>
+            {
+                if (e.LeftButton != MouseButtonState.Pressed) return;
+                var pos = e.GetPosition(null);
+                if (Math.Abs(pos.X - _tagDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                    Math.Abs(pos.Y - _tagDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+                DragDrop.DoDragDrop(button, $"tag:{dragTagDisplayName}", DragDropEffects.Copy);
+            };
+        }
         return button;
     }
 
@@ -844,24 +945,61 @@ public partial class MainWindow : Window
     private void PageTab_DragOver(object sender, DragEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not DomainPage page
-            || page.Id == _activePageId
             || !DragPayload.TryParse(e.Data.GetData(DataFormats.StringFormat), out _))
         {
             e.Effects = DragDropEffects.None;
-        }
-        else
-        {
-            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+            return;
         }
 
+        e.Effects = DragDropEffects.Move;
         e.Handled = true;
+
+        if (page.Id != _activePageId && page.Id != _pageHoverTargetId)
+        {
+            StopPageHoverTimer();
+            _pageHoverTargetId = page.Id;
+            _pageHoverTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(600)
+            };
+            _pageHoverTimer.Tick += (_, _) =>
+            {
+                StopPageHoverTimer();
+                var target = _pages.FirstOrDefault(p => p.Id == _pageHoverTargetId);
+                if (target is not null) SwitchPageDuringDrag(target);
+            };
+            _pageHoverTimer.Start();
+        }
+    }
+
+    private void PageTab_DragLeave(object sender, DragEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is DomainPage page && page.Id == _pageHoverTargetId)
+            StopPageHoverTimer();
+    }
+
+    private void StopPageHoverTimer()
+    {
+        _pageHoverTimer?.Stop();
+        _pageHoverTimer = null;
+        _pageHoverTargetId = Guid.Empty;
+    }
+
+    private void SwitchPageDuringDrag(DomainPage page)
+    {
+        SaveCurrentPageViewState();
+        _activePageId = page.Id;
+        RestorePageViewState(page);
+        Refresh();
     }
 
     private void PageTab_Drop(object sender, DragEventArgs e)
     {
+        StopPageHoverTimer();
         if ((sender as FrameworkElement)?.DataContext is not DomainPage page) return;
-        if (page.Id == _activePageId) return;
         if (!DragPayload.TryParse(e.Data.GetData(DataFormats.StringFormat), out var payload)) return;
+        if (page.Id != _activePageId) SwitchPageDuringDrag(page);
 
         ClearInsertionLine();
         if (payload.Kind == "task")
@@ -890,18 +1028,8 @@ public partial class MainWindow : Window
     private void RenamePage_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not DomainPage page) return;
-        var prompt = new SimplePromptWindow("Rename page", "Page name:") { Owner = this };
-        if (prompt.ShowDialog() != true || string.IsNullOrWhiteSpace(prompt.Result)) return;
-        page.Name = prompt.Result.Trim();
-        try
-        {
-            _db.SavePage(page);
-            Refresh();
-        }
-        catch (Microsoft.Data.Sqlite.SqliteException)
-        {
-            MessageBox.Show(this, "A page with that name already exists.", "Pages", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
+        _renamingPageId = page.Id;
+        Refresh();
     }
 
     private void MovePageLeft_Click(object sender, RoutedEventArgs e)
@@ -969,15 +1097,40 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (IsInlineEditorFocused()) return;
-        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
-        if ((Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
+        // Show menu only when Alt itself is pressed (not Alt+Tab, Alt+F4, etc.)
+        if (e.Key == Key.System && (e.SystemKey == Key.LeftAlt || e.SystemKey == Key.RightAlt))
         {
             MainMenu.Visibility = Visibility.Visible;
         }
 
-        if (e.Key == Key.Escape && !SearchBox.IsKeyboardFocusWithin)
+        if (IsInlineEditorFocused()) return;
+        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+
+        if (e.Key == Key.Escape)
         {
+            // Priority 1: close any open inline editor
+            if (_editingTaskId.HasValue || _creatingTaskId.HasValue)
+            {
+                if (_editingTaskId == _creatingTaskId) CancelCreateTask();
+                else CancelInlineEdit();
+                e.Handled = true;
+                return;
+            }
+            if (_editingNotesTaskId.HasValue) { CancelNotesEdit(); e.Handled = true; return; }
+            if (_editingStartAtTaskId.HasValue) { CancelStartEdit(); e.Handled = true; return; }
+            if (_editingDueAtTaskId.HasValue) { CancelDueEdit(); e.Handled = true; return; }
+            if (_renamingPageId.HasValue) { _renamingPageId = null; Refresh(); e.Handled = true; return; }
+            if (_creatingHeading) { CancelHeadingEdit(); e.Handled = true; return; }
+
+            // Priority 2: clear search text
+            if (!string.IsNullOrEmpty(SearchBox.Text) && !SearchBox.IsKeyboardFocusWithin)
+            {
+                SearchBox.Clear();
+                e.Handled = true;
+                return;
+            }
+
+            // Priority 3: exit focused heading
             if (_focusedHeadingId.HasValue)
             {
                 _focusedHeadingId = null;
@@ -1074,7 +1227,8 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyUp(object sender, KeyEventArgs e)
     {
-        if ((Keyboard.Modifiers & ModifierKeys.Alt) != ModifierKeys.Alt && !MainMenu.IsKeyboardFocusWithin)
+        if (e.Key == Key.System && (e.SystemKey == Key.LeftAlt || e.SystemKey == Key.RightAlt)
+            && !MainMenu.IsKeyboardFocusWithin)
         {
             MainMenu.Visibility = Visibility.Collapsed;
         }
@@ -1148,6 +1302,14 @@ public partial class MainWindow : Window
             }
         }
 
+        if (ctrl && !shift && sel.IsTask && (e.Key == Key.Left || e.Key == Key.Right))
+        {
+            var next = CycleStateForward(sel.State, e.Key == Key.Right ? 1 : -1);
+            SetState(sel.TaskId, next);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Insert)
         {
             BeginCreateTaskNearSelection(after: true);
@@ -1165,7 +1327,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        if ((e.Key == Key.Enter || e.Key == Key.F2) && sel.IsTask)
+        if ((e.Key == Key.Enter || e.Key == Key.F2) && sel.IsTask
+            && _editingTaskId != sel.TaskId && _editingNotesTaskId != sel.TaskId)
         {
             BeginInlineEdit(sel.TaskId);
             e.Handled = true;
@@ -1294,6 +1457,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (payload.Kind == "tag")
+        {
+            ClearInsertionLine();
+            var tagTarget = RowFromOriginalSource(e.OriginalSource as DependencyObject);
+            e.Effects = tagTarget is { IsTask: true } ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
         var target = RowFromOriginalSource(e.OriginalSource as DependencyObject);
         if (target is null || IsSelfDrop(payload, target))
         {
@@ -1325,6 +1497,23 @@ public partial class MainWindow : Window
     {
         ClearInsertionLine();
         if (!DragPayload.TryParse(e.Data.GetData(DataFormats.StringFormat), out var payload)) return;
+
+        if (payload.Kind == "tag")
+        {
+            var tagTarget = RowFromOriginalSource(e.OriginalSource as DependencyObject);
+            if (tagTarget is not { IsTask: true }) return;
+            var task = _taskSnapshot.FirstOrDefault(t => t.Id == tagTarget.TaskId);
+            if (task is null) return;
+            var token = "@" + payload.TagName;
+            if (!task.Title.Contains(token, StringComparison.OrdinalIgnoreCase))
+            {
+                task.Title = task.Title.TrimEnd() + " " + token;
+                _db.SaveTask(task);
+                Refresh();
+            }
+            return;
+        }
+
         var target = RowFromOriginalSource(e.OriginalSource as DependencyObject);
         if (target is null || IsSelfDrop(payload, target)) return;
 
@@ -1400,10 +1589,17 @@ public partial class MainWindow : Window
 
     private void StateButton_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is TaskRowVm { IsTask: true } row)
-        {
-            SetState(row.TaskId, NextCycleState(row.State));
-        }
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm { IsTask: true } row) return;
+        if (row.State == TaskState.Action) SetState(row.TaskId, TaskState.Next);
+        else if (row.State == TaskState.Next) SetState(row.TaskId, TaskState.Action);
+    }
+
+    private void StateButton_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm { IsTask: true } row) return;
+        var target = row.State == TaskState.Done ? TaskState.Action : TaskState.Done;
+        SetState(row.TaskId, target);
+        e.Handled = true;
     }
 
     private void StateMenuItem_Click(object sender, RoutedEventArgs e)
@@ -1901,6 +2097,20 @@ public partial class MainWindow : Window
             CancelNotesEdit();
             e.Handled = true;
         }
+        else if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
+        {
+            // Alt+Enter: insert next bullet point
+            if (sender is not TextBox box) return;
+            var caret = box.CaretIndex;
+            var text = box.Text;
+            var lineStart = text.LastIndexOf('\n', Math.Max(0, caret - 1)) + 1;
+            var lineText = text.Substring(lineStart, caret - lineStart);
+            var prefix = lineText.StartsWith("- ") ? "- " : lineText.StartsWith("• ") ? "• " : "- ";
+            var insert = "\n" + prefix;
+            box.Text = text.Substring(0, caret) + insert + text.Substring(caret);
+            box.CaretIndex = caret + insert.Length;
+            e.Handled = true;
+        }
         else if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
         {
             CommitNotesEdit(row);
@@ -1918,11 +2128,21 @@ public partial class MainWindow : Window
 
     private void ToggleExpanded(Guid taskId)
     {
+        var selectedKey = Selected?.RowKey;
         if (!_expandedTaskIds.Add(taskId))
-        {
             _expandedTaskIds.Remove(taskId);
-        }
         Refresh();
+        // Restore keyboard focus to the ListBoxItem so arrow keys work correctly
+        if (selectedKey is not null)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                var row = _rows.FirstOrDefault(r => r.RowKey == selectedKey);
+                if (row is null) return;
+                var container = TaskList.ItemContainerGenerator.ContainerFromItem(row) as ListBoxItem;
+                container?.Focus();
+            });
+        }
     }
 
     private void ToggleHeadingFocus(Guid? headingId)
@@ -1950,10 +2170,12 @@ public partial class MainWindow : Window
         {
             task.CompletedAt ??= _clock.UtcNow;
             _reminders.Acknowledge(taskId);
+            _recentlyCompletedAt[taskId] = DateTime.UtcNow;
         }
         else if (wasDone)
         {
             task.CompletedAt = null;
+            _recentlyCompletedAt.Remove(taskId);
         }
 
         _db.SaveTask(task);
@@ -1970,6 +2192,16 @@ public partial class MainWindow : Window
         TaskState.Done => TaskState.Action,
         _ => TaskState.Action,
     };
+
+    private static readonly TaskState[] _stateCycle = [TaskState.Action, TaskState.Next, TaskState.Done];
+
+    private static TaskState CycleStateForward(TaskState state, int delta)
+    {
+        var idx = Array.IndexOf(_stateCycle, state);
+        if (idx < 0) idx = 0;
+        idx = ((idx + delta) % _stateCycle.Length + _stateCycle.Length) % _stateCycle.Length;
+        return _stateCycle[idx];
+    }
 
     private void CreateHeading()
     {
@@ -2302,11 +2534,15 @@ public partial class MainWindow : Window
 
     private void RestorePageViewState(DomainPage page)
     {
-        _filterMode = page.LastFilterView;
+        _filterMode = page.LastFilterView ?? "All";
+        _forecastMode = false;
+        _inboxOnly = false;
         _focusedHeadingId = page.LastFocusedHeadingId;
         _searchText = page.LastSearchText ?? "";
         SearchBox.Text = _searchText;
+        FilterCombo.SelectionChanged -= FilterCombo_SelectionChanged;
         FilterCombo.SelectedItem = _filterMode;
+        FilterCombo.SelectionChanged += FilterCombo_SelectionChanged;
     }
 
     private static bool IsInlineEditorFocused()
@@ -2337,6 +2573,92 @@ public partial class MainWindow : Window
             if (nested is not null) return nested;
         }
         return null;
+    }
+
+    // ── Sync placeholder ──────────────────────────────────────────────────────
+    private void SyncButton_Click(object sender, RoutedEventArgs e)
+        => MessageBox.Show(this, "Sync is not yet implemented.", "Tasks", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    // ── Due-date double-click opens inline picker ─────────────────────────────
+    private void DueText_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2) return;
+        if ((sender as FrameworkElement)?.DataContext is TaskRowVm { IsTask: true } row)
+        {
+            BeginDueEdit(row.TaskId);
+            e.Handled = true;
+        }
+    }
+
+    // ── Inline page rename ────────────────────────────────────────────────────
+    private void PageTab_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not DomainPage page) return;
+        _renamingPageId = page.Id;
+        Refresh();
+        e.Handled = true;
+    }
+
+    private void PageNameEditor_KeyDown(object sender, KeyEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not DomainPage page) return;
+        if (e.Key == Key.Enter) { CommitPageRename(page, (TextBox)sender); e.Handled = true; }
+        else if (e.Key == Key.Escape) { _renamingPageId = null; Refresh(); e.Handled = true; }
+    }
+
+    private void PageNameEditor_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is DomainPage page)
+            CommitPageRename(page, (TextBox)sender);
+    }
+
+    private void CommitPageRename(DomainPage page, TextBox box)
+    {
+        if (_renamingPageId != page.Id) return;
+        var name = box.Text.Trim();
+        _renamingPageId = null;
+        if (string.IsNullOrEmpty(name)) { Refresh(); return; }
+        if (name == page.Name) { Refresh(); return; }
+        page.Name = name;
+        try { _db.SavePage(page); }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            MessageBox.Show(this, "A page with that name already exists.", "Pages", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        Refresh();
+    }
+
+    // ── New tag inline ────────────────────────────────────────────────────────
+    private void NewTagMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        _creatingNewTag = true;
+        Refresh();
+        Dispatcher.BeginInvoke(() =>
+        {
+            var box = TagBar.Children.OfType<TextBox>().FirstOrDefault();
+            box?.Focus();
+        });
+    }
+
+    private void NewTagEditor_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox box) return;
+        if (e.Key == Key.Enter) { CommitNewTag(box.Text); e.Handled = true; }
+        else if (e.Key == Key.Escape) { _creatingNewTag = false; Refresh(); e.Handled = true; }
+    }
+
+    private void NewTagEditor_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox box) CommitNewTag(box.Text);
+    }
+
+    private void CommitNewTag(string text)
+    {
+        _creatingNewTag = false;
+        var name = text.Trim().TrimStart('@');
+        if (!string.IsNullOrEmpty(name))
+            _db.AddTag(_activePageId, name);
+        Refresh();
     }
 
     private static TaskRowVm? RowFromOriginalSource(DependencyObject? source)

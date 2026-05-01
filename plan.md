@@ -1,6 +1,6 @@
 # Plan: Current State and Remaining Work
 
-This file has been cleaned up after the Tudumo, Due, and OmniFocus parity pass. Implemented task checklists were removed so this document only tracks current status, deferred work, and notes that future changes should preserve.
+This file tracks current status, pending work, known bugs, deferred items, and notes future agents must preserve. Implemented task checklists were removed during the Tudumo / Due / OmniFocus parity pass.
 
 ## Current Status
 
@@ -16,25 +16,25 @@ This file has been cleaned up after the Tudumo, Due, and OmniFocus parity pass. 
 | A6 - Due and OmniFocus workflow | Done | Quick presets, visible snooze state, reminder action commands, Inbox, Forecast, Review metadata, built-in perspectives. |
 | B - Chrome polish | Done | Menu bar, Settings/Backup/About stubs, standard window sizing, window placement persistence. |
 | C - Bug-fixes | Done | Hotkey schema, inline editor guard, inline heading/task creation, DB snapshot caching, SDD update, page-tab drops, heading-drag headings-only view. |
+| D - UX refinement (round 2) | Done | Visual polish, refined click semantics, toolbar cleanup, sync placeholder, bug fixes — see notes below for deferred drag/drop items. |
 
-Last verified:
+Last verified (2026-05-01, after deferred items):
 
 - `dotnet build Todo-App.sln`
 - `dotnet test Todo-App.sln --logger "trx;LogFilePrefix=test-results" --logger "console;verbosity=normal" --results-directory tests/_results`
 - Result: 42/42 tests passed.
 
-## Remaining Product Work
+## Pending Work
 
-### Deferred UI Polish
+No pending deferred items.
 
-- Custom send-to-tray title-bar button.
-- `New` compound dropdown if a toolbar split-button is still desired.
-- Find-as-toggle polish; the current always-visible search remains.
-- Dedicated Page Manager window for bulk page rename, reorder, and delete.
-- Dedicated Tag Manager window for rename, color, merge, and delete.
-- Global quick-add shortcut that works while the app is minimized. It opens a title-only capture window where each row creates one task, allowing multiple tasks at once. Enter saves and closes the window; Alt+Enter inserts a new row.
+## Known Bugs
 
-### Larger SDD Scope
+No known open bugs.
+
+## Deferred and Larger Scope
+
+### Larger SDD scope
 
 - Full reminder-engine expansion beyond the v1 action-command path.
 - Recurrence engine.
@@ -45,7 +45,7 @@ Last verified:
 - Standalone Due-style countdown timers, if they become a separate surface.
 - Multi-language and theme work.
 
-### Test and Quality Follow-up
+### Test and quality follow-up
 
 - UI smoke tests with a Windows desktop session.
 - Performance/load tests for the 20k-task target.
@@ -53,14 +53,16 @@ Last verified:
 
 ## Notes for Future Agents
 
+These describe behavior that has shipped and must be preserved. When a Pending Work item lands, update the matching note instead of leaving both.
+
 - Keep task creation inline in `MainWindow`; do not reintroduce a separate task-input popup.
 - When creating a task or headline, immediately focus and select the title text input so typing can begin right away.
-- State icon left-click cycles; right-click opens the explicit state menu.
-- Do not delete finished tasks automatically. Completed tasks stay in the list when the active filter includes them, use the Done state with a green checkmark, and render their title text greyed out.
-- Space on a selected task expands or retracts that task when the title text is not being edited. Space on a selected headline toggles focus mode: show only that headline and its subtasks, then press Space again to return to the complete page with all headlines and tasks.
-- Tasks without a heading appear under a default `No Project` heading. This heading is visible only on pages that currently have at least one task without a heading.
+- State icon left-click toggles Action ↔ Next; double-click toggles Action ↔ Complete; right-click opens the explicit state menu. Ctrl+Left/Right cycles the selected task through Action → Next → Done.
+- Do not delete finished tasks automatically. Completed tasks stay in the list when the active filter includes them, use the Done state with a green checkmark, and render their title text greyed out with strikethrough. A freshly completed task stays visible for 5 minutes regardless of filter.
+- Space on a selected task expands or retracts that task when the title text is not being edited. Space on a selected headline toggles focus mode: show only that headline and its subtasks; press Space again to return to the complete page.
+- Tasks without a heading appear under an `Inbox` heading rendered in italic. This heading is visible only on pages that currently have at least one task without a heading.
 - Do not show task counts after heading titles.
-- Show the file menu only while the user is pressing or navigating with Alt.
+- Show the file menu only when the Alt key itself is pressed (not Alt+Tab or other Alt combos). Hide it on Alt release unless keyboard focus moved into the menu.
 - Remove the bottom status bar.
 - Keep toolbar items in a single row, located above the page tabs.
 - Start and end date fields open a calendar popup so the date can be selected directly.
@@ -69,7 +71,10 @@ Last verified:
 - Users can set or clear a task's recurrence from the task UI.
 - Task note text supports markdown.
 - When a task is expanded, clicking the note text edits the notes inline.
-- For tasks due within the next 2 weeks, show days remaining instead of the due date.
+- For tasks due within the next 2 weeks, show days remaining instead of the due date (`in Nd`). Due-date text turns red when fewer than 7 days remain (including overdue tasks). Overdue tasks display `Nd overdue`.
+- Escape first closes any open text box (title editor, note editor, date picker, page rename, heading editor); only when nothing is open does it minimize the window.
+- In the note editor, Alt+Enter inserts the next bullet point (continuing the current line prefix `- ` or `• `).
+- Tags render as flat text with no border frame. Selected tags have a light-blue background.
 - Heading drags temporarily show headings only; task rows restore after drop or cancel.
 - Dragging a task or heading onto a page tab moves it to that page.
 - Window placement is saved in `AppSetting` keys.

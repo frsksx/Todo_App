@@ -18,6 +18,7 @@
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="#E3F0FF"/>
@@ -61,6 +62,7 @@
                             <TextBlock Text="{Binding HeadingDisplay}"
                                        Visibility="{Binding HeadingTitleVisibility}"
                                        FontWeight="SemiBold"
+                                       FontStyle="{Binding HeadingFontStyle}"
                                        FontSize="12"
                                        Foreground="#333333"
                                        VerticalAlignment="Center"/>
@@ -102,20 +104,33 @@
                             Margin="0,0,6,0"
                             Content="{Binding StateGlyph}"
                             FontSize="13"
-                            FontWeight="SemiBold"
+                            FontWeight="{Binding StateGlyphFontWeight}"
                             Foreground="{Binding StateBrush}"
                             CommandParameter="{Binding}"
                             Click="StateButton_Click"
+                            MouseDoubleClick="StateButton_DoubleClick"
                             ToolTip="{Binding StateLabel}">
                         <Button.ContextMenu>
                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                <MenuItem Header="Action" CommandParameter="{Binding}" Tag="Action" Click="StateMenuItem_Click"/>
-                                <MenuItem Header="Next" CommandParameter="{Binding}" Tag="Next" Click="StateMenuItem_Click"/>
-                                <MenuItem Header="On Hold" CommandParameter="{Binding}" Tag="OnHold" Click="StateMenuItem_Click"/>
-                                <MenuItem Header="Waiting" CommandParameter="{Binding}" Tag="Waiting" Click="StateMenuItem_Click"/>
-                                <MenuItem Header="Someday/Maybe" CommandParameter="{Binding}" Tag="Someday" Click="StateMenuItem_Click"/>
+                                <MenuItem Header="Action" CommandParameter="{Binding}" Tag="Action" Click="StateMenuItem_Click">
+                                    <MenuItem.Icon><TextBlock Text="○" Foreground="#3377CC" FontWeight="Bold" FontSize="12"/></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Next" CommandParameter="{Binding}" Tag="Next" Click="StateMenuItem_Click">
+                                    <MenuItem.Icon><TextBlock Text="○" Foreground="#C83C3C" FontWeight="Bold" FontSize="12"/></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="On Hold" CommandParameter="{Binding}" Tag="OnHold" Click="StateMenuItem_Click">
+                                    <MenuItem.Icon><TextBlock Text="Ⅱ" Foreground="#3C78DC" FontSize="12"/></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Waiting" CommandParameter="{Binding}" Tag="Waiting" Click="StateMenuItem_Click">
+                                    <MenuItem.Icon><TextBlock Text="⏱" Foreground="#8844AA" FontSize="12"/></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Someday/Maybe" CommandParameter="{Binding}" Tag="Someday" Click="StateMenuItem_Click">
+                                    <MenuItem.Icon><TextBlock Text="☁" Foreground="#AAAAAA" FontSize="12"/></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator/>
-                                <MenuItem Header="Done" CommandParameter="{Binding}" Tag="Done" Click="StateMenuItem_Click"/>
+                                <MenuItem Header="Done" CommandParameter="{Binding}" Tag="Done" Click="StateMenuItem_Click">
+                                    <MenuItem.Icon><TextBlock Text="✓" Foreground="#4CAF50" FontSize="12"/></MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -125,6 +140,7 @@
                                    FontSize="12.5"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
+                                   TextDecorations="{Binding TitleDecorations}"
                                    Foreground="{Binding TitleBrush}"/>
                         <TextBox Text="{Binding EditTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  Visibility="{Binding TitleEditorVisibility}"
@@ -147,7 +163,10 @@
                                FontSize="12"
                                Margin="12,0,0,0"
                                VerticalAlignment="Center"
-                               Foreground="#777777"/>
+                               Foreground="{Binding DueBrush}"
+                               MouseLeftButtonDown="DueText_MouseLeftButtonDown"
+                               Cursor="Hand"
+                               ToolTip="Double-click to edit due date"/>
                     <Button Grid.Row="0"
                             Grid.Column="4"
                             Style="{StaticResource IconButtonStyle}"
@@ -161,7 +180,7 @@
 
                     <Border Grid.Row="1"
                             Grid.Column="1"
-                            Grid.ColumnSpan="4"
+                            Grid.ColumnSpan="3"
                             Visibility="{Binding ExpandedVisibility}"
                             Padding="0,3,0,2">
                         <StackPanel>
@@ -266,6 +285,25 @@
                             </WrapPanel>
                         </StackPanel>
                     </Border>
+                    <StackPanel Grid.Row="1"
+                                Grid.Column="4"
+                                Visibility="{Binding ExpandedVisibility}"
+                                VerticalAlignment="Top"
+                                Margin="6,6,0,0">
+                        <Button Content="→ start"
+                                Style="{StaticResource IconButtonStyle}"
+                                FontSize="10"
+                                Foreground="#3377CC"
+                                Click="StartChip_Click"
+                                ToolTip="Set start date"/>
+                        <Button Content="↗ due"
+                                Style="{StaticResource IconButtonStyle}"
+                                FontSize="10"
+                                Foreground="#AA5500"
+                                Margin="0,3,0,0"
+                                Click="DueChip_Click"
+                                ToolTip="Set due date"/>
+                    </StackPanel>
                 </Grid>
             </Grid>
         </DataTemplate>
@@ -319,34 +357,19 @@
             <Grid Margin="8,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <Button Grid.Column="0"
-                        Content="New"
-                        Padding="8,3"
-                        Margin="0,0,6,0"
-                        Click="NewTask_Click"
-                        ToolTip="New task in list (Ctrl+N or Insert)"/>
                 <CheckBox x:Name="ShowEmptyHeadingsCheck"
-                          Grid.Column="1"
+                          Grid.Column="0"
                           Content="Show Empty Headings"
                           VerticalAlignment="Center"
                           Margin="0,0,10,0"
                           Checked="ShowEmptyHeadingsCheck_Changed"
                           Unchecked="ShowEmptyHeadingsCheck_Changed"/>
-                <TextBlock Grid.Column="2"
-                           Text="Find"
-                           VerticalAlignment="Center"
-                           Margin="0,0,6,0"
-                           Foreground="#555555"/>
                 <TextBox x:Name="SearchBox"
-                         Grid.Column="3"
+                         Grid.Column="1"
                          Padding="6,3"
                          FontSize="13"
                          BorderBrush="#CCCCCC"
@@ -354,43 +377,48 @@
                          KeyDown="SearchBox_KeyDown"
                          ToolTip="Search (Ctrl+F or /)"/>
                 <CheckBox x:Name="ShowDoneCheck"
-                          Grid.Column="4"
+                          Grid.Column="2"
                           Content="+ Done"
                           VerticalAlignment="Center"
                           Margin="8,0,8,0"
                           Checked="ShowDoneCheck_Changed"
                           Unchecked="ShowDoneCheck_Changed"/>
                 <ComboBox x:Name="FilterCombo"
-                          Grid.Column="5"
-                          Width="116"
-                          SelectionChanged="FilterCombo_SelectionChanged"/>
-                <ComboBox x:Name="DateFilterCombo"
-                          Grid.Column="6"
-                          Width="116"
-                          Margin="8,0,0,0"
-                          SelectionChanged="DateFilterCombo_SelectionChanged"/>
-                <ComboBox x:Name="PerspectiveCombo"
-                          Grid.Column="7"
-                          Width="104"
-                          Margin="8,0,0,0"
-                          FontSize="11"
-                          SelectionChanged="PerspectiveCombo_SelectionChanged"
-                          ToolTip="Built-in perspectives (Inbox, Forecast, Available, Waiting, Someday, Completed, Review)"/>
+                          Grid.Column="3"
+                          Width="140"
+                          SelectionChanged="FilterCombo_SelectionChanged"
+                          ToolTip="Filter and perspectives"/>
             </Grid>
         </Border>
         <Border DockPanel.Dock="Top" Background="#F8F8F8" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1">
-            <DockPanel Margin="8,4">
-                <Button DockPanel.Dock="Right"
-                        Content="+"
-                        Width="24"
-                        Height="22"
-                        Click="AddPage_Click"
-                        ToolTip="Add page"/>
-                <StackPanel x:Name="PageTabs" Orientation="Horizontal"/>
-            </DockPanel>
+            <Border.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="New Page" Click="AddPage_Click"/>
+                </ContextMenu>
+            </Border.ContextMenu>
+            <StackPanel x:Name="PageTabs" Orientation="Horizontal" Margin="8,4"/>
         </Border>
         <Border DockPanel.Dock="Bottom" Background="#F8F8F8" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0">
-            <WrapPanel x:Name="TagBar" Margin="6,3"/>
+            <Grid>
+                <WrapPanel x:Name="TagBar" Margin="6,3">
+                    <WrapPanel.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="New Tag…" Click="NewTagMenuItem_Click"/>
+                        </ContextMenu>
+                    </WrapPanel.ContextMenu>
+                </WrapPanel>
+                <Button HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="4"
+                        Padding="4,2"
+                        FontSize="11"
+                        Content="⟳ Sync"
+                        Click="SyncButton_Click"
+                        ToolTip="Sync (not yet implemented)"
+                        Background="Transparent"
+                        BorderThickness="1"
+                        BorderBrush="#CCCCCC"/>
+            </Grid>
         </Border>
         <ListBox x:Name="TaskList"
                  BorderThickness="0"

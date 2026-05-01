@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("WindowsTrayTasks.TestSupport")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6777eca29a860544bc604fda735aba1b459a2292")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ed93fa5de985e49294111033bcd489b5db3ab8ea")]
 [assembly: System.Reflection.AssemblyProductAttribute("WindowsTrayTasks.TestSupport")]
 [assembly: System.Reflection.AssemblyTitleAttribute("WindowsTrayTasks.TestSupport")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

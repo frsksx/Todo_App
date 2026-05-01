@@ -691,6 +691,37 @@ GROUP BY tt.tag_id";
         }
     }
 
+    public void AddTag(Guid pageId, string displayName)
+    {
+        using var conn = Open();
+        using var tx = conn.BeginTransaction();
+        UpsertTag(conn, tx, pageId, displayName);
+        tx.Commit();
+    }
+
+    public Dictionary<Guid, (bool HasUrgentDue, bool HasNextActions)> GetPageTaskSummaries()
+    {
+        var cutoff = DateTime.UtcNow.Date.AddDays(2).ToString("O");
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+SELECT page_id,
+    MAX(CASE WHEN due_at IS NOT NULL AND due_at < $cutoff THEN 1 ELSE 0 END),
+    MAX(CASE WHEN state = $next THEN 1 ELSE 0 END)
+FROM TaskItem
+WHERE deleted_at IS NULL AND archived_at IS NULL
+GROUP BY page_id";
+        cmd.Parameters.AddWithValue("$cutoff", cutoff);
+        cmd.Parameters.AddWithValue("$next", (int)TaskState.Next);
+        using var r = cmd.ExecuteReader();
+        var result = new Dictionary<Guid, (bool, bool)>();
+        while (r.Read())
+        {
+            result[Guid.Parse(r.GetString(0))] = (r.GetInt32(1) == 1, r.GetInt32(2) == 1);
+        }
+        return result;
+    }
+
     private Guid UpsertTag(SqliteConnection conn, SqliteTransaction tx, Guid pageId, string displayName)
     {
         var normalized = TagExtractor.Normalize(displayName);

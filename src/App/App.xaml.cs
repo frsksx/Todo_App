@@ -91,8 +91,10 @@ public partial class App : Application
         var conflicts = new System.Collections.Generic.List<string>();
         if (!_hotkeys!.TryRegister(HotkeyModifiers.Control | HotkeyModifiers.Alt, Key.Q, ShowQuickAdd, out var err1))
             conflicts.Add(err1!);
-        if (!_hotkeys.TryRegister(HotkeyModifiers.Control | HotkeyModifiers.Alt, Key.T, ShowMain, out var err2))
+        if (!_hotkeys.TryRegister(HotkeyModifiers.Control | HotkeyModifiers.Alt, Key.T, () => _main!.ShowAndActivate(), out var err2))
             conflicts.Add(err2!);
+        if (!_hotkeys.TryRegister(HotkeyModifiers.Control | HotkeyModifiers.Alt, Key.H, () => _main!.HideToTray(), out var err3))
+            conflicts.Add(err3!);
 
         if (conflicts.Count > 0)
         {
