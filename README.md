@@ -1,117 +1,143 @@
-# Windows Tray Task Manager — v1 prototype
+# Windows Tray Task Manager
 
-A keyboard-first Windows tray task manager inspired by Due (persistent reminders) and Tudumo (GTD speed). This is the **Phase 1 prototype** from [sdd.md](sdd.md) — enough surface area to use and stress-test the core flows.
+A keyboard-first Windows tray task manager inspired by Due's persistent reminders and Tudumo's fast GTD-style capture. The app runs from the tray, stores data in SQLite, and keeps the main workflow dense: quick capture, page tabs, headings, tags, reminders, and keyboard-driven task state changes.
 
-## What's in v1
+## Current Features
 
-- ✅ Tray icon with state-colored badges (idle / scheduled / due-soon / overdue / paused / error)
-- ✅ Global hotkeys (`Ctrl+Alt+Q` quick-add, `Ctrl+Alt+T` show/hide main)
-- ✅ Quick-add window
-- ✅ Main window with task list grouped by heading, search, filters
-- ✅ Task editor (title, heading, state, start/due dates, reminder, auto-snooze, notes)
-- ✅ 7 task states (Inbox/Next/Waiting/Scheduled/Someday/Done/Archived) with keys `1`–`7`
-- ✅ Reminder engine with auto-snooze and missed-reminder coalescing on startup
-- ✅ Tray balloon notifications (single + coalesced summary)
-- ✅ SQLite persistence (WAL) at `%LOCALAPPDATA%\WindowsTrayTasks\tasks.db`
-- ✅ Single-instance via named mutex + named pipe
+- Tray icon with state-colored badges for idle, scheduled, due-soon, overdue, paused, and error states.
+- Global hotkeys: `Ctrl+Alt+Q` for quick add and `Ctrl+Alt+T` for show/hide.
+- Quick-add window with reminder shorthand.
+- Main task window with pages, headings, inbox rows, search, composed filters, date filters, and tag filters.
+- Task editor for title, heading, state, start/due dates, reminders, recurrence, links, and markdown notes.
+- Task states: Action, Next, On Hold, Waiting, Someday, and Done.
+- Reminder engine with auto-snooze and missed-reminder coalescing on startup.
+- Tray balloon notifications.
+- SQLite persistence with WAL mode at `%LOCALAPPDATA%\WindowsTrayTasks\tasks.db`.
+- Single-instance handling with a named mutex and named pipe.
+- Drag/drop reordering for tasks and headings, including moving tasks, headings, and inbox tasks between page tabs.
+- Drag/drop tag assignment by dropping a task on a tag or dropping a tag on a task.
 
-## What's deferred from the SDD
+## Deferred Scope
 
-- ❌ MSIX packaging (run unpackaged via `dotnet run`)
-- ❌ Windows App SDK toast notifications (uses NotifyIcon balloon tip — works unpackaged; toast actions like Done/Snooze require MSIX)
-- ❌ Outlook drag/drop, recurrence, backup/restore, DPAPI encryption, change log/HLC
-- ❌ Today Review mode, Focus Assist integration, Task Scheduler safety net
-- ❌ Per-heading reminder defaults
+- MSIX packaging.
+- Windows App SDK toast notifications and toast action buttons.
+- Outlook drag/drop and source-reference integration.
+- Full recurrence engine.
+- Backup/restore implementation beyond current stubs.
+- Settings implementation beyond current stubs.
+- Focus Assist integration and Task Scheduler safety net.
+- Per-heading reminder defaults.
 
 ## Prerequisites
 
 - Windows 10/11
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 
-## Run it
+## Run
 
 ```powershell
-dotnet run --project src/App/WindowsTrayTasks.csproj
+dotnet run --project src/App/WindowsTrayTasks.App.csproj
 ```
 
-The app starts silently into the tray — **no main window appears at first**. Look for the round colored icon in the system tray (you may need to click the chevron to expand the overflow area; consider pinning the icon).
+The app starts silently in the tray. Open the tray overflow if the icon is hidden, or press `Ctrl+Alt+T` to show the main window.
 
-## Try the golden path
+## Test
 
-1. Press `Ctrl+Alt+Q` — quick-add window pops.
+```powershell
+dotnet build Todo-App.sln
+dotnet test Todo-App.sln --logger "console;verbosity=normal"
+```
+
+The current unit suite covers parser/filter/reminder behavior, persistence, pages/tags, sort-order math, and the pure board-move/tag helpers used by drag/drop flows. WPF pointer-level drag/drop still needs manual smoke testing in a Windows desktop session.
+
+## Try the Golden Path
+
+1. Press `Ctrl+Alt+Q`.
 2. Type a title. In the reminder field, type `+1m` and press Enter.
-3. The window closes. The tray icon turns blue (scheduled).
-4. After ~1 minute, the tray icon turns red, a balloon appears, and the tooltip shows "1 overdue."
-5. Press `Ctrl+Alt+T` — main window opens, task is highlighted with `⏰ overdue`.
-6. Press `Space` to mark done. The reminder is acknowledged; tray returns to gray.
-7. Right-click tray icon → Quit (or `Ctrl+Alt+T` again to hide).
+3. The window closes and the tray icon turns blue.
+4. After about 1 minute, the tray icon turns red and a balloon appears.
+5. Press `Ctrl+Alt+T` to open the main window.
+6. Press `Space` on the task to mark it done.
+7. Right-click the tray icon and choose Quit.
 
-## Keyboard reference (main window)
+## Keyboard Reference
 
 | Key | Action |
 |---|---|
 | `Ctrl+F` or `/` | Focus search |
-| `Ctrl+N` | New task (opens quick-add) |
+| `Ctrl+N` | New task |
 | `Ctrl+H` | New heading |
-| `Enter` / `F2` / double-click | Edit selected task |
-| `Ctrl+D` | Edit selected task, focus reminder |
-| `Space` | Toggle done |
-| `1`–`7` | Set state (Inbox / Next / Waiting / Scheduled / Someday / Done / Archived) |
+| `Enter`, `F2`, or double-click | Edit selected task |
+| `Ctrl+D` | Edit selected task and focus reminder |
+| `Space` on task | Toggle done |
+| `Space` on heading | Toggle heading focus mode |
+| `Ctrl+Left` / `Ctrl+Right` | Cycle selected task state |
+| `1`-`6` | Set state |
 | `Delete` | Delete task |
-| `Esc` | Hide window (or clear search if search has focus) |
+| `Esc` | Close active editor/search, then hide window |
 
-## Reminder time shorthand
+## Drag And Drop
+
+- Drag a task within a page to reorder it or move it into a heading/inbox section.
+- Drag a heading vertically in the list to position it before or after another heading section.
+- Drag a task, heading, or inbox heading onto another page tab to move it there.
+- Hover a page tab during a drag to switch pages, then drop vertically in the newly active page.
+- Drag a task onto a tag to assign that tag.
+- Drag a tag onto a task to assign that tag.
+
+## Reminder Time Shorthand
 
 In any datetime field:
-- `+5m` — 5 minutes from now
-- `+2h` — 2 hours from now
-- `+1d` — 1 day from now
-- `2026-05-01 14:30` — explicit local time
-- `2026-05-01` — explicit date (00:00 local)
 
-## Data location
+- `+5m`: 5 minutes from now
+- `+2h`: 2 hours from now
+- `+1d`: 1 day from now
+- `2026-05-01 14:30`: explicit local time
+- `2026-05-01`: explicit date at local midnight
 
-```
-%LOCALAPPDATA%\WindowsTrayTasks\tasks.db        (SQLite, WAL mode)
+## Data Location
+
+```text
+%LOCALAPPDATA%\WindowsTrayTasks\tasks.db
 %LOCALAPPDATA%\WindowsTrayTasks\tasks.db-wal
 %LOCALAPPDATA%\WindowsTrayTasks\tasks.db-shm
 ```
 
-Delete the `.db*` files to reset.
+Delete the `.db*` files to reset local data.
 
-## Tray menu
+## Tray Menu
 
-- **Quick Add** — same as `Ctrl+Alt+Q`
-- **Open Tasks** — same as `Ctrl+Alt+T`
-- **Show Overdue** — opens main window
-- **Snooze All (5 min)** — bumps every active reminder by 5 minutes
-- **Pause / Resume Reminders** — global pause; tray icon turns purple
-- **Quit** — clean shutdown
+- Quick Add: same as `Ctrl+Alt+Q`
+- Open Tasks: same as `Ctrl+Alt+T`
+- Show Overdue: opens the main window
+- Snooze All (5 min): bumps every active reminder by 5 minutes
+- Pause / Resume Reminders: global pause
+- Quit: clean shutdown
 
-## Known v1 limitations
+## Project Layout
 
-- **Tray balloon, not Windows toast.** Done/Snooze buttons inside notifications require MSIX packaging + COM activator (SDD §3.3 / §10.2). Click the tray icon or use the main window to act on a reminder.
-- **No recurrence yet.** The data model supports it (SDD §8.5) but the UI is deferred.
-- **No backup yet.** Back up the `.db` files manually if you care about the data.
-- **Hotkey conflicts** are reported in a balloon at startup; remediation requires editing the source for now (settings UI is post-Phase-1).
-- **Hidden tray icon.** Windows hides new tray icons by default in the overflow area. Drag it onto the visible tray for testing convenience.
-
-## Project layout
-
-```
+```text
 src/App/
-  App.xaml(.cs)              startup, single-instance, wiring
-  Domain/Models.cs           TaskItem, Heading, Reminder, enums
-  Persistence/Database.cs    SQLite repos (hand-rolled)
-  Reminders/ReminderEngine.cs
-  Tray/TrayIconManager.cs    NotifyIcon + dynamic icon rendering
+  App.xaml(.cs)                    startup, single-instance, wiring
   Hotkeys/GlobalHotkeyService.cs   Win32 RegisterHotKey
-  Shell/SingleInstance.cs    mutex + named pipe
-  Views/
-    MainWindow.xaml(.cs)
-    QuickAddWindow.xaml(.cs)
-    TaskEditorWindow.xaml(.cs)
-    SimplePromptWindow.xaml(.cs)
+  Shell/SingleInstance.cs          mutex and named pipe
+  Tray/TrayIconManager.cs          NotifyIcon and dynamic icon rendering
+  Views/                           WPF windows
+
+src/Domain/
+  Models.cs                        task, heading, page, tag, reminder models
+  TaskBoardMoves.cs                pure page/heading/inbox move rules
+  TaskTitleTags.cs                 tag-token title updates
+  SortOrderMath.cs                 sparse ordering helpers
+  ReminderActions.cs               reminder command behavior
+
+src/Infrastructure/
+  Persistence/Database.cs          SQLite persistence
+
+tests/
+  Domain.Tests/
+  Infrastructure.Tests/
+  TestSupport/
 ```
 
-See [sdd.md](sdd.md) for the full design and the roadmap of what comes next.
+See [sdd.md](sdd.md) and [plan.md](plan.md) for the broader design notes and current roadmap.

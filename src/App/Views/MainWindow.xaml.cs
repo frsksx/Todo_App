@@ -254,7 +254,6 @@ public partial class MainWindow : Window
     private string _pendingHeadingTitle = "";
     private Point _dragStart;
     private DragPayload? _dragSource;
-    private bool _headingDragInProgress;
     private InsertionLineAdorner? _insertionAdorner;
     private AdornerLayer? _insertionLayer;
     private FrameworkElement? _insertionElement;
@@ -573,7 +572,7 @@ public partial class MainWindow : Window
             if (headingTasks.Count == 0 && !_showEmptyHeadings) continue;
 
             rows.Add(CreateHeadingRow(heading.Id, heading.Title, headingTasks.Count, heading.Collapsed));
-            if (!heading.Collapsed && !_headingDragInProgress)
+            if (!heading.Collapsed)
             {
                 rows.AddRange(headingTasks.Select(t => CreateTaskRow(t, heading.Title, reminders, now)));
             }
@@ -587,8 +586,7 @@ public partial class MainWindow : Window
         var noHeadingTasks = tasksByHeading.TryGetValue(HeadingKey(null), out var looseTasks)
             ? looseTasks
             : new List<TaskItem>();
-        if (!_headingDragInProgress
-            && noHeadingTasks.Count > 0
+        if (noHeadingTasks.Count > 0
             && (!_focusedHeadingId.HasValue || _focusedHeadingId.Value == Guid.Empty))
         {
             rows.Add(CreateHeadingRow(null, "Inbox", noHeadingTasks.Count, collapsed: false));
@@ -1007,14 +1005,10 @@ public partial class MainWindow : Window
         var task = FindTask(taskId);
         if (task is null) return;
 
-        var normalized = TagExtractor.Normalize(tagName);
-        var alreadyTagged = TagExtractor.ExtractTags(task.Title)
-            .Any(t => TagExtractor.Normalize(t).Equals(normalized, StringComparison.OrdinalIgnoreCase));
-        if (alreadyTagged) return;
+        var updatedTitle = TaskTitleTags.AddTagToken(task.Title, tagName);
+        if (updatedTitle == task.Title) return;
 
-        var token = "@" + tagName.Trim().TrimStart('@');
-        var trimmedTitle = task.Title.TrimEnd();
-        task.Title = trimmedTitle.Length == 0 ? token : $"{trimmedTitle} {token}";
+        task.Title = updatedTitle;
         _db.SaveTask(task);
         Refresh();
     }
@@ -1574,11 +1568,6 @@ public partial class MainWindow : Window
         {
             _dragSource = null;
             ClearInsertionLine();
-            if (_headingDragInProgress)
-            {
-                _headingDragInProgress = false;
-                Refresh();
-            }
         }
     }
 
@@ -1637,15 +1626,7 @@ public partial class MainWindow : Window
         {
             var tagTarget = RowFromOriginalSource(e.OriginalSource as DependencyObject);
             if (tagTarget is not { IsTask: true }) return;
-            var task = _taskSnapshot.FirstOrDefault(t => t.Id == tagTarget.TaskId);
-            if (task is null) return;
-            var token = "@" + payload.TagName;
-            if (!task.Title.Contains(token, StringComparison.OrdinalIgnoreCase))
-            {
-                task.Title = task.Title.TrimEnd() + " " + token;
-                _db.SaveTask(task);
-                Refresh();
-            }
+            AssignTagToTask(tagTarget.TaskId, payload.TagName);
             return;
         }
 
@@ -2462,37 +2443,22 @@ public partial class MainWindow : Window
 
     private void MoveHeadingNearHeading(Guid headingId, Guid targetHeadingId, bool after)
     {
-        if (headingId == targetHeadingId) return;
         var heading = FindHeading(headingId);
         var target = FindHeading(targetHeadingId);
         if (heading is null || target is null) return;
 
-        var targetPageId = target.PageId;
-        var movedAcrossPages = heading.PageId != targetPageId;
-        var headings = _db.GetHeadings(targetPageId)
-            .OrderBy(h => h.SortOrder)
-            .ThenBy(h => h.Title)
-            .ToList();
-        var orderedWithoutSource = headings.Where(h => h.Id != headingId).ToList();
-        var targetIndex = orderedWithoutSource.FindIndex(h => h.Id == targetHeadingId);
-        if (targetIndex < 0) return;
-
-        var previous = after
-            ? orderedWithoutSource[targetIndex].SortOrder
-            : targetIndex > 0 ? orderedWithoutSource[targetIndex - 1].SortOrder : (double?)null;
-        var next = after
-            ? targetIndex + 1 < orderedWithoutSource.Count ? orderedWithoutSource[targetIndex + 1].SortOrder : (double?)null
-            : orderedWithoutSource[targetIndex].SortOrder;
-
-        heading.PageId = targetPageId;
-        heading.SortOrder = SortOrderMath.Between(previous, next);
-        _db.SaveHeading(heading);
-        if (movedAcrossPages)
+        if (TaskBoardMoves.MoveHeadingNearHeading(
+                heading,
+                target,
+                after,
+                _db.GetHeadings(target.PageId),
+                _db.GetTasks(includeArchived: true),
+                out var movedTasks))
         {
-            MoveHeadingTasksToPage(heading.Id, targetPageId);
+            _db.SaveHeading(heading);
+            SaveTasks(movedTasks);
+            Refresh();
         }
-
-        Refresh();
     }
 
     private void MoveHeadingNearListTarget(Guid headingId, TaskRowVm target, bool after)
@@ -2527,44 +2493,29 @@ public partial class MainWindow : Window
         var heading = FindHeading(headingId);
         if (heading is null) return;
 
-        heading.PageId = pageId;
-        heading.SortOrder = SortOrderAtEndForPageHeadings(pageId);
+        TaskBoardMoves.MoveHeadingToPage(
+            heading,
+            pageId,
+            _db.GetHeadings(pageId),
+            _db.GetTasks(includeArchived: true),
+            out var movedTasks);
         _db.SaveHeading(heading);
-        MoveHeadingTasksToPage(headingId, pageId);
+        SaveTasks(movedTasks);
 
         Refresh();
     }
 
-    private void MoveHeadingTasksToPage(Guid headingId, Guid pageId)
+    private void SaveTasks(IEnumerable<TaskItem> tasks)
     {
-        foreach (var task in _db.GetTasks(includeArchived: true).Where(t => t.HeadingId == headingId))
-        {
-            task.PageId = pageId;
-            _db.SaveTask(task);
-        }
+        foreach (var task in tasks) _db.SaveTask(task);
     }
 
     private void MoveInboxToPage(Guid sourcePageId, Guid targetPageId)
     {
-        if (sourcePageId == targetPageId) return;
+        var movedTasks = TaskBoardMoves.MoveInboxToPage(sourcePageId, targetPageId, _db.GetTasks(includeArchived: true));
+        if (movedTasks.Count == 0) return;
 
-        var lastSort = _db.GetTasks(includeArchived: true, pageId: targetPageId)
-            .Where(t => t.ArchivedAt is null && t.HeadingId is null)
-            .OrderBy(t => t.SortOrder)
-            .LastOrDefault()
-            ?.SortOrder;
-
-        foreach (var task in _db.GetTasks(includeArchived: true, pageId: sourcePageId)
-                     .Where(t => t.HeadingId is null)
-                     .OrderBy(t => t.SortOrder)
-                     .ThenBy(t => t.Title))
-        {
-            lastSort = SortOrderMath.Between(lastSort, null);
-            task.PageId = targetPageId;
-            task.SortOrder = lastSort.Value;
-            _db.SaveTask(task);
-        }
-
+        SaveTasks(movedTasks);
         Refresh();
     }
 
@@ -2642,12 +2593,7 @@ public partial class MainWindow : Window
     }
 
     private double SortOrderAtEndForPageHeadings(Guid pageId)
-    {
-        var headings = _db.GetHeadings(pageId)
-            .OrderBy(h => h.SortOrder)
-            .ToList();
-        return SortOrderMath.Between(headings.LastOrDefault()?.SortOrder, null);
-    }
+        => TaskBoardMoves.SortOrderAtEndForPageHeadings(pageId, _db.GetHeadings(pageId));
 
     private void SwitchPage(int delta)
     {
