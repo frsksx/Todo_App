@@ -263,8 +263,8 @@ public partial class MainWindow : Window
     private readonly Dictionary<Guid, DateTime> _recentlyCompletedAt = new();
     private Guid? _renamingPageId;
     private bool _creatingNewTag;
-    private System.Windows.Threading.DispatcherTimer? _pageHoverTimer;
     private Guid _pageHoverTargetId;
+    private DateTime _pageHoverStartedAtUtc;
     private Point _tagDragStart;
 
     private sealed record DragPayload(string Kind, Guid Id, string TagName = "")
@@ -284,10 +284,35 @@ public partial class MainWindow : Window
                 return true;
             }
             if (!Guid.TryParse(parts[1], out var id)) return false;
-            if (parts[0] is not ("task" or "heading")) return false;
+            if (parts[0] is not ("task" or "heading" or "inbox")) return false;
             payload = new DragPayload(parts[0], id);
             return true;
         }
+    }
+
+    private static DataObject CreateDragDataObject(string payload)
+    {
+        var data = new DataObject();
+        data.SetData(DataFormats.StringFormat, payload);
+        data.SetData(DataFormats.UnicodeText, payload);
+        data.SetData(DataFormats.Text, payload);
+        return data;
+    }
+
+    private static bool TryGetDragPayload(IDataObject? data, out DragPayload payload)
+    {
+        payload = new DragPayload("", Guid.Empty);
+        if (data is null) return false;
+
+        object? raw =
+            data.GetData(DataFormats.StringFormat)
+            ?? data.GetData(DataFormats.UnicodeText)
+            ?? data.GetData(DataFormats.Text);
+
+        if (raw is null && data.GetDataPresent(typeof(string)))
+            raw = data.GetData(typeof(string));
+
+        return DragPayload.TryParse(raw, out payload);
     }
 
     public MainWindow(Database db, ReminderEngine reminders, IClock clock, EntityFactory entities, Action quickAdd)
@@ -463,9 +488,9 @@ public partial class MainWindow : Window
             };
             button.Click += PageTab_Click;
             button.MouseDoubleClick += PageTab_DoubleClick;
-            button.DragOver += PageTab_DragOver;
-            button.DragLeave += PageTab_DragLeave;
-            button.Drop += PageTab_Drop;
+            button.PreviewDragOver += PageTab_DragOver;
+            button.PreviewDragLeave += PageTab_DragLeave;
+            button.PreviewDrop += PageTab_Drop;
             button.ContextMenu = BuildPageContextMenu(page);
             PageTabs.Children.Add(button);
         }
@@ -900,6 +925,10 @@ public partial class MainWindow : Window
         button.Click += TagButton_Click;
         if (dragTagDisplayName is not null)
         {
+            button.Tag = dragTagDisplayName;
+            button.AllowDrop = true;
+            button.DragOver += TagButton_DragOver;
+            button.Drop += TagButton_Drop;
             button.PreviewMouseLeftButtonDown += (_, e) => _tagDragStart = e.GetPosition(null);
             button.MouseMove += (_, e) =>
             {
@@ -907,7 +936,7 @@ public partial class MainWindow : Window
                 var pos = e.GetPosition(null);
                 if (Math.Abs(pos.X - _tagDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
                     Math.Abs(pos.Y - _tagDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-                DragDrop.DoDragDrop(button, $"tag:{dragTagDisplayName}", DragDropEffects.Copy);
+                DragDrop.DoDragDrop(button, CreateDragDataObject($"tag:{dragTagDisplayName}"), DragDropEffects.Copy);
             };
         }
         return button;
@@ -936,6 +965,60 @@ public partial class MainWindow : Window
         Refresh();
     }
 
+    private void TagButton_DragOver(object sender, DragEventArgs e)
+    {
+        if (!TryGetDropTagName(sender, out _)
+            || !TryGetDragPayload(e.Data, out var payload)
+            || payload.Kind != "task")
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void TagButton_Drop(object sender, DragEventArgs e)
+    {
+        if (TryGetDropTagName(sender, out var tagName)
+            && TryGetDragPayload(e.Data, out var payload)
+            && payload.Kind == "task")
+        {
+            AssignTagToTask(payload.Id, tagName);
+        }
+
+        e.Handled = true;
+    }
+
+    private static bool TryGetDropTagName(object sender, out string tagName)
+    {
+        tagName = "";
+        if (sender is not FrameworkElement { Tag: string raw } || string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        tagName = raw.Trim().TrimStart('@');
+        return tagName.Length > 0;
+    }
+
+    private void AssignTagToTask(Guid taskId, string tagName)
+    {
+        var task = FindTask(taskId);
+        if (task is null) return;
+
+        var normalized = TagExtractor.Normalize(tagName);
+        var alreadyTagged = TagExtractor.ExtractTags(task.Title)
+            .Any(t => TagExtractor.Normalize(t).Equals(normalized, StringComparison.OrdinalIgnoreCase));
+        if (alreadyTagged) return;
+
+        var token = "@" + tagName.Trim().TrimStart('@');
+        var trimmedTitle = task.Title.TrimEnd();
+        task.Title = trimmedTitle.Length == 0 ? token : $"{trimmedTitle} {token}";
+        _db.SaveTask(task);
+        Refresh();
+    }
+
     private void PageTab_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not DomainPage page) return;
@@ -944,8 +1027,9 @@ public partial class MainWindow : Window
 
     private void PageTab_DragOver(object sender, DragEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is not DomainPage page
-            || !DragPayload.TryParse(e.Data.GetData(DataFormats.StringFormat), out _))
+        if (!TryGetPageDropTarget(sender, e, out var page)
+            || !TryGetDragPayload(e.Data, out var payload)
+            || payload.Kind is not ("task" or "heading" or "inbox"))
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -955,35 +1039,80 @@ public partial class MainWindow : Window
         e.Effects = DragDropEffects.Move;
         e.Handled = true;
 
-        if (page.Id != _activePageId && page.Id != _pageHoverTargetId)
+        if (page.Id == _activePageId)
         {
             StopPageHoverTimer();
+            return;
+        }
+
+        var now = _clock.UtcNow;
+        if (page.Id != _pageHoverTargetId)
+        {
             _pageHoverTargetId = page.Id;
-            _pageHoverTimer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(600)
-            };
-            _pageHoverTimer.Tick += (_, _) =>
-            {
-                StopPageHoverTimer();
-                var target = _pages.FirstOrDefault(p => p.Id == _pageHoverTargetId);
-                if (target is not null) SwitchPageDuringDrag(target);
-            };
-            _pageHoverTimer.Start();
+            _pageHoverStartedAtUtc = now;
+            return;
+        }
+
+        if (now - _pageHoverStartedAtUtc >= TimeSpan.FromMilliseconds(500))
+        {
+            StopPageHoverTimer();
+            SwitchPageDuringDrag(page);
         }
     }
 
     private void PageTab_DragLeave(object sender, DragEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is DomainPage page && page.Id == _pageHoverTargetId)
+        if (sender is not FrameworkElement element)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(element);
+        var stillInside = position.X >= 0
+            && position.Y >= 0
+            && position.X <= element.ActualWidth
+            && position.Y <= element.ActualHeight;
+        if (!stillInside)
+        {
             StopPageHoverTimer();
+        }
+    }
+
+    private bool TryGetPageDropTarget(object sender, DragEventArgs e, out DomainPage page)
+    {
+        page = null!;
+
+        if (sender is FrameworkElement { DataContext: DomainPage senderPage })
+        {
+            page = senderPage;
+            return true;
+        }
+
+        var source = e.OriginalSource as DependencyObject;
+        while (source is not null)
+        {
+            if (source is FrameworkElement { DataContext: DomainPage elementPage })
+            {
+                page = elementPage;
+                return true;
+            }
+
+            if (source is FrameworkContentElement { DataContext: DomainPage contentPage })
+            {
+                page = contentPage;
+                return true;
+            }
+
+            source = GetParentObject(source);
+        }
+
+        return false;
     }
 
     private void StopPageHoverTimer()
     {
-        _pageHoverTimer?.Stop();
-        _pageHoverTimer = null;
         _pageHoverTargetId = Guid.Empty;
+        _pageHoverStartedAtUtc = default;
     }
 
     private void SwitchPageDuringDrag(DomainPage page)
@@ -997,9 +1126,8 @@ public partial class MainWindow : Window
     private void PageTab_Drop(object sender, DragEventArgs e)
     {
         StopPageHoverTimer();
-        if ((sender as FrameworkElement)?.DataContext is not DomainPage page) return;
-        if (!DragPayload.TryParse(e.Data.GetData(DataFormats.StringFormat), out var payload)) return;
-        if (page.Id != _activePageId) SwitchPageDuringDrag(page);
+        if (!TryGetPageDropTarget(sender, e, out var page)) return;
+        if (!TryGetDragPayload(e.Data, out var payload)) return;
 
         ClearInsertionLine();
         if (payload.Kind == "task")
@@ -1010,7 +1138,12 @@ public partial class MainWindow : Window
         {
             MoveHeadingToPage(payload.Id, page.Id);
         }
+        else if (payload.Kind == "inbox")
+        {
+            MoveInboxToPage(payload.Id, page.Id);
+        }
 
+        if (page.Id != _activePageId) SwitchPageDuringDrag(page);
         e.Handled = true;
     }
 
@@ -1267,7 +1400,11 @@ public partial class MainWindow : Window
 
     private TaskItem? FindTask(Guid taskId)
         => CurrentTasks().FirstOrDefault(t => t.Id == taskId)
-           ?? _db.GetTasks(includeArchived: true, pageId: _activePageId).FirstOrDefault(t => t.Id == taskId);
+           ?? _db.GetTasks(includeArchived: true).FirstOrDefault(t => t.Id == taskId);
+
+    private Heading? FindHeading(Guid headingId)
+        => CurrentHeadings().FirstOrDefault(h => h.Id == headingId)
+           ?? _db.GetHeadings().FirstOrDefault(h => h.Id == headingId);
 
     private void TaskList_KeyDown(object sender, KeyEventArgs e)
     {
@@ -1398,6 +1535,7 @@ public partial class MainWindow : Window
         {
             { IsTask: true, IsNewTask: false } => new DragPayload("task", row.TaskId),
             { IsHeading: true, IsNewHeading: false, HeadingId: { } headingId } => new DragPayload("heading", headingId),
+            { IsHeading: true, IsNewHeading: false, HeadingId: null, HeadingTitle: "Inbox" } => new DragPayload("inbox", _activePageId),
             _ => null,
         };
     }
@@ -1425,15 +1563,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (payload.Kind == "heading")
-        {
-            _headingDragInProgress = true;
-            Refresh();
-        }
-
         try
         {
-            DragDrop.DoDragDrop(TaskList, payload.ToString(), DragDropEffects.Move);
+            var effects = payload.Kind == "task"
+                ? DragDropEffects.Move | DragDropEffects.Copy
+                : DragDropEffects.Move;
+            DragDrop.DoDragDrop(TaskList, CreateDragDataObject(payload.ToString()), effects);
         }
         finally
         {
@@ -1449,7 +1584,7 @@ public partial class MainWindow : Window
 
     private void TaskList_DragOver(object sender, DragEventArgs e)
     {
-        if (!DragPayload.TryParse(e.Data.GetData(DataFormats.StringFormat), out var payload))
+        if (!TryGetDragPayload(e.Data, out var payload))
         {
             e.Effects = DragDropEffects.None;
             ClearInsertionLine();
@@ -1496,7 +1631,7 @@ public partial class MainWindow : Window
     private void TaskList_Drop(object sender, DragEventArgs e)
     {
         ClearInsertionLine();
-        if (!DragPayload.TryParse(e.Data.GetData(DataFormats.StringFormat), out var payload)) return;
+        if (!TryGetDragPayload(e.Data, out var payload)) return;
 
         if (payload.Kind == "tag")
         {
@@ -1522,8 +1657,13 @@ public partial class MainWindow : Window
 
         if (payload.Kind == "heading")
         {
-            if (target.IsHeading && target.HeadingId is { } targetHeadingId)
-                MoveHeadingNearHeading(payload.Id, targetHeadingId, after);
+            MoveHeadingNearListTarget(payload.Id, target, after);
+            return;
+        }
+
+        if (payload.Kind == "inbox")
+        {
+            MoveInboxToPage(payload.Id, _activePageId);
             return;
         }
 
@@ -1545,6 +1685,7 @@ public partial class MainWindow : Window
         {
             "task" => target.IsTask && target.TaskId == payload.Id,
             "heading" => target.IsHeading && target.HeadingId == payload.Id,
+            "inbox" => target.IsHeading && target.HeadingId is null && target.HeadingTitle == "Inbox",
             _ => false,
         };
 
@@ -2322,11 +2463,16 @@ public partial class MainWindow : Window
     private void MoveHeadingNearHeading(Guid headingId, Guid targetHeadingId, bool after)
     {
         if (headingId == targetHeadingId) return;
-        var headings = CurrentHeadings().OrderBy(h => h.SortOrder).ThenBy(h => h.Title).ToList();
-        var heading = headings.FirstOrDefault(h => h.Id == headingId);
-        var target = headings.FirstOrDefault(h => h.Id == targetHeadingId);
+        var heading = FindHeading(headingId);
+        var target = FindHeading(targetHeadingId);
         if (heading is null || target is null) return;
 
+        var targetPageId = target.PageId;
+        var movedAcrossPages = heading.PageId != targetPageId;
+        var headings = _db.GetHeadings(targetPageId)
+            .OrderBy(h => h.SortOrder)
+            .ThenBy(h => h.Title)
+            .ToList();
         var orderedWithoutSource = headings.Where(h => h.Id != headingId).ToList();
         var targetIndex = orderedWithoutSource.FindIndex(h => h.Id == targetHeadingId);
         if (targetIndex < 0) return;
@@ -2338,28 +2484,84 @@ public partial class MainWindow : Window
             ? targetIndex + 1 < orderedWithoutSource.Count ? orderedWithoutSource[targetIndex + 1].SortOrder : (double?)null
             : orderedWithoutSource[targetIndex].SortOrder;
 
+        heading.PageId = targetPageId;
         heading.SortOrder = SortOrderMath.Between(previous, next);
         _db.SaveHeading(heading);
+        if (movedAcrossPages)
+        {
+            MoveHeadingTasksToPage(heading.Id, targetPageId);
+        }
+
         Refresh();
+    }
+
+    private void MoveHeadingNearListTarget(Guid headingId, TaskRowVm target, bool after)
+    {
+        if (target.IsHeading)
+        {
+            if (target.HeadingId is { } targetHeadingId)
+            {
+                MoveHeadingNearHeading(headingId, targetHeadingId, after);
+            }
+            else
+            {
+                MoveHeadingToPage(headingId, _activePageId);
+            }
+
+            return;
+        }
+
+        var targetTask = FindTask(target.TaskId);
+        if (targetTask?.HeadingId is { } containingHeadingId)
+        {
+            MoveHeadingNearHeading(headingId, containingHeadingId, after);
+        }
+        else
+        {
+            MoveHeadingToPage(headingId, _activePageId);
+        }
     }
 
     private void MoveHeadingToPage(Guid headingId, Guid pageId)
     {
-        var heading = CurrentHeadings().FirstOrDefault(h => h.Id == headingId);
+        var heading = FindHeading(headingId);
         if (heading is null) return;
-
-        var headingTasks = CurrentTasks()
-            .Where(t => t.HeadingId == headingId)
-            .OrderBy(t => t.SortOrder)
-            .ToList();
 
         heading.PageId = pageId;
         heading.SortOrder = SortOrderAtEndForPageHeadings(pageId);
         _db.SaveHeading(heading);
+        MoveHeadingTasksToPage(headingId, pageId);
 
-        foreach (var task in headingTasks)
+        Refresh();
+    }
+
+    private void MoveHeadingTasksToPage(Guid headingId, Guid pageId)
+    {
+        foreach (var task in _db.GetTasks(includeArchived: true).Where(t => t.HeadingId == headingId))
         {
             task.PageId = pageId;
+            _db.SaveTask(task);
+        }
+    }
+
+    private void MoveInboxToPage(Guid sourcePageId, Guid targetPageId)
+    {
+        if (sourcePageId == targetPageId) return;
+
+        var lastSort = _db.GetTasks(includeArchived: true, pageId: targetPageId)
+            .Where(t => t.ArchivedAt is null && t.HeadingId is null)
+            .OrderBy(t => t.SortOrder)
+            .LastOrDefault()
+            ?.SortOrder;
+
+        foreach (var task in _db.GetTasks(includeArchived: true, pageId: sourcePageId)
+                     .Where(t => t.HeadingId is null)
+                     .OrderBy(t => t.SortOrder)
+                     .ThenBy(t => t.Title))
+        {
+            lastSort = SortOrderMath.Between(lastSort, null);
+            task.PageId = targetPageId;
+            task.SortOrder = lastSort.Value;
             _db.SaveTask(task);
         }
 
@@ -2370,10 +2572,20 @@ public partial class MainWindow : Window
     {
         var task = FindTask(taskId);
         if (task is null) return;
-        var siblings = CurrentTasks()
+
+        var pageId = _activePageId;
+        if (headingId.HasValue)
+        {
+            var heading = FindHeading(headingId.Value);
+            if (heading is null) return;
+            pageId = heading.PageId;
+        }
+
+        var siblings = _db.GetTasks(includeArchived: true, pageId: pageId)
             .Where(t => t.HeadingId == headingId && t.Id != taskId)
             .OrderBy(t => t.SortOrder)
             .ToList();
+        task.PageId = pageId;
         task.HeadingId = headingId;
         task.SortOrder = SortOrderMath.Between(siblings.LastOrDefault()?.SortOrder, null);
         _db.SaveTask(task);
@@ -2382,17 +2594,18 @@ public partial class MainWindow : Window
 
     private void MoveTaskBeforeTask(Guid taskId, Guid targetTaskId)
     {
-        var tasks = CurrentTasks()
+        var tasks = _db.GetTasks(includeArchived: true)
             .OrderBy(t => t.SortOrder)
             .ThenBy(t => t.Title)
             .ToList();
         var task = tasks.FirstOrDefault(t => t.Id == taskId);
         var target = tasks.FirstOrDefault(t => t.Id == targetTaskId);
         if (task is null || target is null) return;
-        var siblings = tasks.Where(t => t.HeadingId == target.HeadingId && t.Id != taskId).ToList();
+        var siblings = tasks.Where(t => t.PageId == target.PageId && t.HeadingId == target.HeadingId && t.Id != taskId).ToList();
         var targetIndex = siblings.FindIndex(t => t.Id == targetTaskId);
         var previous = targetIndex > 0 ? siblings[targetIndex - 1].SortOrder : (double?)null;
         var next = target.SortOrder;
+        task.PageId = target.PageId;
         task.HeadingId = target.HeadingId;
         task.SortOrder = SortOrderMath.Between(previous, next);
         _db.SaveTask(task);
@@ -2401,17 +2614,18 @@ public partial class MainWindow : Window
 
     private void MoveTaskAfterTask(Guid taskId, Guid targetTaskId)
     {
-        var tasks = CurrentTasks()
+        var tasks = _db.GetTasks(includeArchived: true)
             .OrderBy(t => t.SortOrder)
             .ThenBy(t => t.Title)
             .ToList();
         var task = tasks.FirstOrDefault(t => t.Id == taskId);
         var target = tasks.FirstOrDefault(t => t.Id == targetTaskId);
         if (task is null || target is null) return;
-        var siblings = tasks.Where(t => t.HeadingId == target.HeadingId && t.Id != taskId).ToList();
+        var siblings = tasks.Where(t => t.PageId == target.PageId && t.HeadingId == target.HeadingId && t.Id != taskId).ToList();
         var targetIndex = siblings.FindIndex(t => t.Id == targetTaskId);
         var previous = target.SortOrder;
         var next = targetIndex >= 0 && targetIndex + 1 < siblings.Count ? siblings[targetIndex + 1].SortOrder : (double?)null;
+        task.PageId = target.PageId;
         task.HeadingId = target.HeadingId;
         task.SortOrder = SortOrderMath.Between(previous, next);
         _db.SaveTask(task);
