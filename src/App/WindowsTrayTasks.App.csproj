@@ -8,7 +8,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>WindowsTrayTasks</RootNamespace>
     <AssemblyName>WindowsTrayTasks</AssemblyName>
-    <ApplicationIcon></ApplicationIcon>
+    <ApplicationIcon>Assets\todo-list.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Domain\WindowsTrayTasks.Domain.csproj" />

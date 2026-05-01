@@ -16,6 +16,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -45,15 +46,54 @@
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Margin="0,0,6,0">
                 <TextBlock Text="Start (yyyy-MM-dd HH:mm or blank)" FontSize="11" Foreground="#666666"/>
-                <TextBox x:Name="StartBox" Padding="6,4" Margin="0,2,0,0"/>
+                <Grid Margin="0,2,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="StartBox" Grid.Column="0" Padding="6,4"/>
+                    <DatePicker x:Name="StartPicker"
+                                Grid.Column="1"
+                                Width="34"
+                                Margin="4,0,0,0"
+                                SelectedDateChanged="StartPicker_SelectedDateChanged"
+                                ToolTip="Select start date"/>
+                </Grid>
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="6,0,0,0">
                 <TextBlock Text="Due (yyyy-MM-dd HH:mm or blank)" FontSize="11" Foreground="#666666"/>
-                <TextBox x:Name="DueBox" Padding="6,4" Margin="0,2,0,0"/>
+                <Grid Margin="0,2,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="DueBox" Grid.Column="0" Padding="6,4"/>
+                    <DatePicker x:Name="DuePicker"
+                                Grid.Column="1"
+                                Width="34"
+                                Margin="4,0,0,0"
+                                SelectedDateChanged="DuePicker_SelectedDateChanged"
+                                ToolTip="Select due date"/>
+                </Grid>
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="4" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0" Padding="0,8,0,0" Margin="0,0,0,8">
+        <Grid Grid.Row="4" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                <TextBlock Text="Recurrence" FontSize="11" Foreground="#666666"/>
+                <TextBox x:Name="RecurrenceBox" Padding="6,4" Margin="0,2,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                <TextBlock Text="Link" FontSize="11" Foreground="#666666"/>
+                <TextBox x:Name="LinkBox" Padding="6,4" Margin="0,2,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="5" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0" Padding="0,8,0,0" Margin="0,0,0,8">
             <StackPanel>
                 <TextBlock Text="Reminder" FontSize="12" FontWeight="SemiBold" Foreground="#444444"/>
                 <Grid Margin="0,6,0,0">
@@ -73,16 +113,16 @@
             </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="5" Text="Notes" FontSize="11" Foreground="#666666" Margin="0,4,0,0"/>
+        <TextBlock Grid.Row="6" Text="Notes" FontSize="11" Foreground="#666666" Margin="0,4,0,0"/>
         <TextBox x:Name="NotesBox"
-                 Grid.Row="6"
+                 Grid.Row="7"
                  Margin="0,2,0,8"
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto"
                  FontSize="13"/>
 
-        <Grid Grid.Row="7">
+        <Grid Grid.Row="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>

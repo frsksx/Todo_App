@@ -59,6 +59,8 @@ public sealed class TaskItem
     public double SortOrder { get; set; }
     public DateTime? StartAt { get; set; }
     public DateTime? DueAt { get; set; }
+    public string? Recurrence { get; set; }
+    public string? Link { get; set; }
     public DateTime? CompletedAt { get; set; }
     public DateTime? ArchivedAt { get; set; }
     public DateTime CreatedAt { get; set; }

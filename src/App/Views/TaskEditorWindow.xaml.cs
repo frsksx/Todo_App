@@ -47,6 +47,10 @@ public partial class TaskEditorWindow : Window
         NotesBox.Text = _task.Notes ?? "";
         StartBox.Text = FormatLocal(_task.StartAt);
         DueBox.Text = FormatLocal(_task.DueAt);
+        StartPicker.SelectedDate = _task.StartAt?.ToLocalTime().Date;
+        DuePicker.SelectedDate = _task.DueAt?.ToLocalTime().Date;
+        RecurrenceBox.Text = _task.Recurrence ?? "";
+        LinkBox.Text = _task.Link ?? "";
         ReminderBox.Text = FormatLocal(existingReminder?.NextFireAt ?? existingReminder?.FireAt);
 
         HintText.Text = "Save: Enter · Cancel: Esc · Reminder shorthand: +5m, +2h, +1d";
@@ -60,6 +64,27 @@ public partial class TaskEditorWindow : Window
 
     private DateTime? ParseDateTimeInput(string text)
         => DateInputParser.Parse(text, _clock.UtcNow);
+
+    private void StartPicker_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (StartPicker.SelectedDate is { } date)
+            StartBox.Text = MergeSelectedDate(StartBox.Text, date);
+    }
+
+    private void DuePicker_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DuePicker.SelectedDate is { } date)
+            DueBox.Text = MergeSelectedDate(DueBox.Text, date);
+    }
+
+    private static string MergeSelectedDate(string existingText, DateTime selectedDate)
+    {
+        var time = TimeSpan.Zero;
+        if (DateTime.TryParse(existingText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var existing))
+            time = existing.TimeOfDay;
+
+        return selectedDate.Date.Add(time).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
@@ -101,6 +126,8 @@ public partial class TaskEditorWindow : Window
         _task.State = (TaskState)(StateCombo.SelectedItem ?? TaskState.Action);
         _task.StartAt = start;
         _task.DueAt = due;
+        _task.Recurrence = string.IsNullOrWhiteSpace(RecurrenceBox.Text) ? null : RecurrenceBox.Text.Trim();
+        _task.Link = string.IsNullOrWhiteSpace(LinkBox.Text) ? null : LinkBox.Text.Trim();
 
         var heading = HeadingCombo.SelectedItem as Heading;
         _task.HeadingId = (heading is null || heading.Id == Guid.Empty) ? null : heading.Id;

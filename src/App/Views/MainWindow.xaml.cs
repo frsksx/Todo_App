@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
@@ -57,6 +58,8 @@ public sealed class TaskRowVm
 
     public DateTime? StartAt { get; init; }
     public DateTime? DueAt { get; init; }
+    public string? Recurrence { get; init; }
+    public string? Link { get; init; }
     public DateTime? CompletedAt { get; init; }
     public string? Notes { get; init; }
     public DateTime? ReminderNextFireAt { get; init; }
@@ -79,6 +82,8 @@ public sealed class TaskRowVm
 
     public string StartChipText => StartAt.HasValue ? $"→ {ToLocal(StartAt.Value)}" : "→ set start";
     public string DueChipText => DueAt.HasValue ? $"↗ {ToLocal(DueAt.Value)}" : "↗ set due";
+    public DateTime? StartLocalDate => StartAt?.ToLocalTime().Date;
+    public DateTime? DueLocalDate => DueAt?.ToLocalTime().Date;
     public string ClearStartText => StartAt.HasValue ? "✕" : "";
     public string ClearDueText => DueAt.HasValue ? "✕" : "";
     public Visibility StartChipVisibility => IsEditingStart ? Visibility.Collapsed : Visibility.Visible;
@@ -90,8 +95,28 @@ public sealed class TaskRowVm
     public Visibility CompletedChipVisibility => CompletedAt.HasValue ? Visibility.Visible : Visibility.Collapsed;
     public string CompletedChipText => CompletedAt.HasValue ? $"done: {ToLocal(CompletedAt.Value)}" : "";
 
-    public string DueText => DueAt is null ? "" : $"due {ToLocal(DueAt.Value)}";
+    public string DueText
+    {
+        get
+        {
+            if (DueAt is null) return "";
+            var dueDate = DueAt.Value.ToLocalTime().Date;
+            var days = (dueDate - DateTime.Today).Days;
+            if (days is >= 0 and <= 14)
+                return days switch
+                {
+                    0 => "due today",
+                    1 => "1 day remaining",
+                    _ => $"{days} days remaining",
+                };
+            return $"due {ToLocal(DueAt.Value)}";
+        }
+    }
     public string NotesText => string.IsNullOrWhiteSpace(Notes) ? "No notes" : Notes!;
+    public string RecurrenceText => string.IsNullOrWhiteSpace(Recurrence) ? "" : $"repeat {Recurrence}";
+    public Visibility RecurrenceVisibility => string.IsNullOrWhiteSpace(Recurrence) ? Visibility.Collapsed : Visibility.Visible;
+    public string LinkText => string.IsNullOrWhiteSpace(Link) ? "" : "link";
+    public Visibility LinkVisibility => string.IsNullOrWhiteSpace(Link) ? Visibility.Collapsed : Visibility.Visible;
     public string TagsText => Tags.Count > 0 ? string.Join("  ", Tags.Select(t => "@" + t.DisplayName)) : "";
     public Visibility TagsVisibility => Tags.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     public string ReminderDetailText
@@ -257,6 +282,7 @@ public partial class MainWindow : Window
         Loaded += (_, _) => { Refresh(); SearchBox.Focus(); };
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
+        PreviewKeyUp += OnPreviewKeyUp;
 
         _reminders.StateChanged += () => Dispatcher.BeginInvoke(Refresh);
     }
@@ -345,18 +371,6 @@ public partial class MainWindow : Window
             TaskList.SelectedItem = _rows.FirstOrDefault(r => r.RowKey == selectedKey);
         }
 
-        var visibleActiveCount = _rows.Count(r => r.IsTask && r.State is not TaskState.Done);
-        var pageName = _pages.FirstOrDefault(p => p.Id == _activePageId)?.Name ?? "Tasks";
-        var pieces = new List<string> { $"{visibleActiveCount} active actions", pageName };
-        var snap = _reminders.Snapshot();
-        if (snap.OverdueCount > 0) pieces.Add($"{snap.OverdueCount} overdue");
-        if (_reminders.IsPaused) pieces.Add("reminders paused");
-        if (_focusedHeadingId.HasValue)
-        {
-            var focusTitle = _rows.FirstOrDefault(r => r.IsHeading && r.IsFocusedHeading)?.HeadingTitle ?? "heading";
-            pieces.Add($"Focused: {focusTitle} · Esc to exit");
-        }
-        StatusText.Text = string.Join(" · ", pieces);
     }
 
     private void RefreshPages()
@@ -468,8 +482,8 @@ public partial class MainWindow : Window
             && noHeadingTasks.Count > 0
             && (!_focusedHeadingId.HasValue || _focusedHeadingId.Value == Guid.Empty))
         {
-            rows.Add(CreateHeadingRow(null, "(No heading)", noHeadingTasks.Count, collapsed: false));
-            rows.AddRange(noHeadingTasks.Select(t => CreateTaskRow(t, "(No heading)", reminders, now)));
+            rows.Add(CreateHeadingRow(null, "No Project", noHeadingTasks.Count, collapsed: false));
+            rows.AddRange(noHeadingTasks.Select(t => CreateTaskRow(t, "No Project", reminders, now)));
         }
 
         return rows;
@@ -556,6 +570,8 @@ public partial class MainWindow : Window
             IsNewTask = _creatingTaskId == task.Id,
             StartAt = task.StartAt,
             DueAt = task.DueAt,
+            Recurrence = task.Recurrence,
+            Link = task.Link,
             CompletedAt = task.CompletedAt,
             Notes = task.Notes,
             Tags = task.Tags,
@@ -955,6 +971,10 @@ public partial class MainWindow : Window
     {
         if (IsInlineEditorFocused()) return;
         var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
+        {
+            MainMenu.Visibility = Visibility.Visible;
+        }
 
         if (e.Key == Key.Escape && !SearchBox.IsKeyboardFocusWithin)
         {
@@ -969,6 +989,23 @@ public partial class MainWindow : Window
             }
             e.Handled = true;
             return;
+        }
+
+        if (e.Key == Key.Space && !SearchBox.IsKeyboardFocusWithin && Selected is { } selected)
+        {
+            if (selected.IsHeading && !selected.IsNewHeading)
+            {
+                ToggleHeadingFocus(selected.HeadingId);
+                e.Handled = true;
+                return;
+            }
+
+            if (selected.IsTask)
+            {
+                ToggleExpanded(selected.TaskId);
+                e.Handled = true;
+                return;
+            }
         }
 
         if (ctrl && e.Key == Key.F || e.Key == Key.Oem2 && !ctrl)
@@ -1032,6 +1069,22 @@ public partial class MainWindow : Window
                 JumpToPage(number.Value - 1);
                 e.Handled = true;
             }
+        }
+    }
+
+    private void OnPreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) != ModifierKeys.Alt && !MainMenu.IsKeyboardFocusWithin)
+        {
+            MainMenu.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void MainMenu_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) != ModifierKeys.Alt)
+        {
+            MainMenu.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -1635,7 +1688,7 @@ public partial class MainWindow : Window
         _editingStartAtTaskId = taskId;
         _editingDueAtTaskId = null;
         Refresh();
-        FocusDateEditor(taskId, "StartEditor");
+        FocusDatePicker(taskId, "StartDatePicker");
     }
 
     private void CommitStartEdit(TaskRowVm row)
@@ -1650,7 +1703,7 @@ public partial class MainWindow : Window
             else
             {
                 var parsed = DateInputParser.Parse(text, _clock.UtcNow);
-                if (parsed is null) { FocusDateEditor(row.TaskId, "StartEditor"); return; }
+                if (parsed is null) { FocusDatePicker(row.TaskId, "StartDatePicker"); return; }
                 task.StartAt = parsed;
             }
             _db.SaveTask(task);
@@ -1671,7 +1724,7 @@ public partial class MainWindow : Window
         _editingDueAtTaskId = taskId;
         _editingStartAtTaskId = null;
         Refresh();
-        FocusDateEditor(taskId, "DueEditor");
+        FocusDatePicker(taskId, "DueDatePicker");
     }
 
     private void CommitDueEdit(TaskRowVm row)
@@ -1686,7 +1739,7 @@ public partial class MainWindow : Window
             else
             {
                 var parsed = DateInputParser.Parse(text, _clock.UtcNow);
-                if (parsed is null) { FocusDateEditor(row.TaskId, "DueEditor"); return; }
+                if (parsed is null) { FocusDatePicker(row.TaskId, "DueDatePicker"); return; }
                 task.DueAt = parsed;
             }
             _db.SaveTask(task);
@@ -1701,7 +1754,7 @@ public partial class MainWindow : Window
         Refresh();
     }
 
-    private void FocusDateEditor(Guid taskId, string editorName)
+    private void FocusDatePicker(Guid taskId, string pickerName)
     {
         var row = _rows.FirstOrDefault(r => r.TaskId == taskId);
         if (row is null) return;
@@ -1709,10 +1762,10 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(() =>
         {
             var container = TaskList.ItemContainerGenerator.ContainerFromItem(row) as DependencyObject;
-            var box = FindVisualChildByName<TextBox>(container, editorName);
-            if (box is null) return;
-            box.Focus();
-            box.SelectAll();
+            var picker = FindVisualChildByName<DatePicker>(container, pickerName);
+            if (picker is null) return;
+            picker.Focus();
+            picker.IsDropDownOpen = true;
         });
     }
 
@@ -1727,6 +1780,30 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row) return;
         var task = FindTask(row.TaskId);
         if (task is not null) { task.StartAt = null; _db.SaveTask(task); Refresh(); }
+    }
+
+    private void StartDatePicker_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row) return;
+        if (_editingStartAtTaskId != row.TaskId) return;
+        if ((sender as DatePicker)?.SelectedDate is not { } selected) return;
+        var task = FindTask(row.TaskId);
+        if (task is null) return;
+        var existing = task.StartAt?.ToLocalTime();
+        var local = selected.Date.Add(existing?.TimeOfDay ?? TimeSpan.Zero);
+        task.StartAt = DateTime.SpecifyKind(local, DateTimeKind.Local).ToUniversalTime();
+        _db.SaveTask(task);
+        _editingStartAtTaskId = null;
+        Refresh();
+    }
+
+    private void StartDatePicker_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CancelStartEdit();
+            e.Handled = true;
+        }
     }
 
     private void StartEditor_KeyDown(object sender, KeyEventArgs e)
@@ -1748,11 +1825,59 @@ public partial class MainWindow : Window
             BeginDueEdit(row.TaskId);
     }
 
+    private void NotesText_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is TaskRowVm row)
+        {
+            BeginNotesEdit(row.TaskId);
+            e.Handled = true;
+        }
+    }
+
+    private void TaskLink_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row || string.IsNullOrWhiteSpace(row.Link))
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(row.Link) { UseShellExecute = true });
+        }
+        catch
+        {
+            MessageBox.Show(this, "The link could not be opened.", "Tasks", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
     private void ClearDue_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row) return;
         var task = FindTask(row.TaskId);
         if (task is not null) { task.DueAt = null; _db.SaveTask(task); Refresh(); }
+    }
+
+    private void DueDatePicker_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row) return;
+        if (_editingDueAtTaskId != row.TaskId) return;
+        if ((sender as DatePicker)?.SelectedDate is not { } selected) return;
+        var task = FindTask(row.TaskId);
+        if (task is null) return;
+        var existing = task.DueAt?.ToLocalTime();
+        var local = selected.Date.Add(existing?.TimeOfDay ?? TimeSpan.Zero);
+        task.DueAt = DateTime.SpecifyKind(local, DateTimeKind.Local).ToUniversalTime();
+        _db.SaveTask(task);
+        _editingDueAtTaskId = null;
+        Refresh();
+    }
+
+    private void DueDatePicker_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CancelDueEdit();
+            e.Handled = true;
+        }
     }
 
     private void DueEditor_KeyDown(object sender, KeyEventArgs e)
@@ -2219,8 +2344,26 @@ public partial class MainWindow : Window
         while (source is not null)
         {
             if (source is FrameworkElement { DataContext: TaskRowVm row }) return row;
-            source = VisualTreeHelper.GetParent(source);
+            if (source is FrameworkContentElement { DataContext: TaskRowVm contentRow }) return contentRow;
+            source = GetParentObject(source);
         }
+        return null;
+    }
+
+    private static DependencyObject? GetParentObject(DependencyObject source)
+    {
+        if (source is Visual or System.Windows.Media.Media3D.Visual3D)
+            return VisualTreeHelper.GetParent(source);
+
+        if (source is ContentElement content)
+        {
+            var parent = ContentOperations.GetParent(content);
+            if (parent is not null) return parent;
+
+            if (content is FrameworkContentElement frameworkContent)
+                return frameworkContent.Parent;
+        }
+
         return null;
     }
 }

@@ -165,12 +165,13 @@
                             Visibility="{Binding ExpandedVisibility}"
                             Padding="0,3,0,2">
                         <StackPanel>
-                            <TextBlock Text="{Binding NotesText}"
-                                       Visibility="{Binding NotesTextVisibility}"
-                                       FontSize="12"
-                                       Foreground="#555555"
-                                       TextWrapping="Wrap"
-                                       ToolTip="Ctrl+Enter to edit notes"/>
+                            <vm:MarkdownTextBlock MarkdownText="{Binding NotesText}"
+                                                  Visibility="{Binding NotesTextVisibility}"
+                                                  FontSize="12"
+                                                  Foreground="#555555"
+                                                  TextWrapping="Wrap"
+                                                  MouseLeftButtonDown="NotesText_MouseLeftButtonDown"
+                                                  ToolTip="Click to edit notes inline"/>
                             <TextBox x:Name="NotesEditor"
                                      Text="{Binding EditNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      Visibility="{Binding NotesEditorVisibility}"
@@ -202,15 +203,15 @@
                                         Margin="0,0,8,0"
                                         Click="ClearStart_Click"
                                         ToolTip="Clear start date"/>
-                                <TextBox x:Name="StartEditor"
-                                         Text="{Binding EditStart, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         Visibility="{Binding StartEditorVisibility}"
-                                         FontSize="11" Width="140" Padding="2,1"
-                                         BorderBrush="#8DB8E8"
-                                         Margin="0,0,4,0"
-                                         KeyDown="StartEditor_KeyDown"
-                                         LostFocus="StartEditor_LostFocus"
-                                         ToolTip="Enter to save · Esc to cancel"/>
+                                <DatePicker x:Name="StartDatePicker"
+                                            SelectedDate="{Binding StartLocalDate, Mode=OneWay}"
+                                            Visibility="{Binding StartEditorVisibility}"
+                                            Width="132"
+                                            FontSize="11"
+                                            Margin="0,0,4,0"
+                                            SelectedDateChanged="StartDatePicker_SelectedDateChanged"
+                                            KeyDown="StartDatePicker_KeyDown"
+                                            ToolTip="Select start date"/>
                                 <!-- Due date chip -->
                                 <Button x:Name="DueChip"
                                         Content="{Binding DueChipText}"
@@ -227,15 +228,15 @@
                                         Margin="0,0,8,0"
                                         Click="ClearDue_Click"
                                         ToolTip="Clear due date"/>
-                                <TextBox x:Name="DueEditor"
-                                         Text="{Binding EditDue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         Visibility="{Binding DueEditorVisibility}"
-                                         FontSize="11" Width="140" Padding="2,1"
-                                         BorderBrush="#8DB8E8"
-                                         Margin="0,0,4,0"
-                                         KeyDown="DueEditor_KeyDown"
-                                         LostFocus="DueEditor_LostFocus"
-                                         ToolTip="Enter to save · Esc to cancel"/>
+                                <DatePicker x:Name="DueDatePicker"
+                                            SelectedDate="{Binding DueLocalDate, Mode=OneWay}"
+                                            Visibility="{Binding DueEditorVisibility}"
+                                            Width="132"
+                                            FontSize="11"
+                                            Margin="0,0,4,0"
+                                            SelectedDateChanged="DueDatePicker_SelectedDateChanged"
+                                            KeyDown="DueDatePicker_KeyDown"
+                                            ToolTip="Select due date"/>
                                 <!-- Completed date (read-only) -->
                                 <TextBlock Text="{Binding CompletedChipText}"
                                            Visibility="{Binding CompletedChipVisibility}"
@@ -246,6 +247,18 @@
                                            Visibility="{Binding TagsVisibility}"
                                            FontSize="11" Foreground="#5577AA"
                                            Margin="0,0,8,0"/>
+                                <TextBlock Text="{Binding RecurrenceText}"
+                                           Visibility="{Binding RecurrenceVisibility}"
+                                           FontSize="11" Foreground="#777777"
+                                           Margin="0,0,8,0"/>
+                                <Button Content="{Binding LinkText}"
+                                        Visibility="{Binding LinkVisibility}"
+                                        Style="{StaticResource IconButtonStyle}"
+                                        FontSize="11"
+                                        Foreground="#3377CC"
+                                        Margin="0,0,8,0"
+                                        Click="TaskLink_Click"
+                                        ToolTip="{Binding Link}"/>
                                 <!-- Reminder detail -->
                                 <TextBlock Text="{Binding ReminderDetailText}"
                                            Visibility="{Binding ReminderDetailVisibility}"
@@ -259,7 +272,13 @@
     </Window.Resources>
 
     <DockPanel>
-        <Menu DockPanel.Dock="Top" Background="#F5F5F5" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1">
+        <Menu x:Name="MainMenu"
+              DockPanel.Dock="Top"
+              Visibility="Collapsed"
+              Background="#F5F5F5"
+              BorderBrush="#DDDDDD"
+              BorderThickness="0,0,0,1"
+              LostKeyboardFocus="MainMenu_LostKeyboardFocus">
             <MenuItem Header="_File">
                 <MenuItem Header="_New Task"      Click="NewTask_Click"    InputGestureText="Ctrl+N"/>
                 <MenuItem Header="New _Heading"   Click="NewHeading_Click" InputGestureText="Ctrl+H"/>
@@ -296,6 +315,69 @@
                 <MenuItem Header="_About"        Click="About_Click"/>
             </MenuItem>
         </Menu>
+        <Border DockPanel.Dock="Top" Background="#F0F0F0" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1">
+            <Grid Margin="8,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0"
+                        Content="New"
+                        Padding="8,3"
+                        Margin="0,0,6,0"
+                        Click="NewTask_Click"
+                        ToolTip="New task in list (Ctrl+N or Insert)"/>
+                <CheckBox x:Name="ShowEmptyHeadingsCheck"
+                          Grid.Column="1"
+                          Content="Show Empty Headings"
+                          VerticalAlignment="Center"
+                          Margin="0,0,10,0"
+                          Checked="ShowEmptyHeadingsCheck_Changed"
+                          Unchecked="ShowEmptyHeadingsCheck_Changed"/>
+                <TextBlock Grid.Column="2"
+                           Text="Find"
+                           VerticalAlignment="Center"
+                           Margin="0,0,6,0"
+                           Foreground="#555555"/>
+                <TextBox x:Name="SearchBox"
+                         Grid.Column="3"
+                         Padding="6,3"
+                         FontSize="13"
+                         BorderBrush="#CCCCCC"
+                         TextChanged="SearchBox_TextChanged"
+                         KeyDown="SearchBox_KeyDown"
+                         ToolTip="Search (Ctrl+F or /)"/>
+                <CheckBox x:Name="ShowDoneCheck"
+                          Grid.Column="4"
+                          Content="+ Done"
+                          VerticalAlignment="Center"
+                          Margin="8,0,8,0"
+                          Checked="ShowDoneCheck_Changed"
+                          Unchecked="ShowDoneCheck_Changed"/>
+                <ComboBox x:Name="FilterCombo"
+                          Grid.Column="5"
+                          Width="116"
+                          SelectionChanged="FilterCombo_SelectionChanged"/>
+                <ComboBox x:Name="DateFilterCombo"
+                          Grid.Column="6"
+                          Width="116"
+                          Margin="8,0,0,0"
+                          SelectionChanged="DateFilterCombo_SelectionChanged"/>
+                <ComboBox x:Name="PerspectiveCombo"
+                          Grid.Column="7"
+                          Width="104"
+                          Margin="8,0,0,0"
+                          FontSize="11"
+                          SelectionChanged="PerspectiveCombo_SelectionChanged"
+                          ToolTip="Built-in perspectives (Inbox, Forecast, Available, Waiting, Someday, Completed, Review)"/>
+            </Grid>
+        </Border>
         <Border DockPanel.Dock="Top" Background="#F8F8F8" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1">
             <DockPanel Margin="8,4">
                 <Button DockPanel.Dock="Right"
@@ -306,84 +388,6 @@
                         ToolTip="Add page"/>
                 <StackPanel x:Name="PageTabs" Orientation="Horizontal"/>
             </DockPanel>
-        </Border>
-        <Border DockPanel.Dock="Top" Background="#F0F0F0" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1">
-            <StackPanel>
-                <Grid Margin="8,4,8,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0"
-                            Content="New"
-                            Padding="8,3"
-                            Margin="0,0,6,0"
-                            Click="NewTask_Click"
-                            ToolTip="New task in list (Ctrl+N or Insert)"/>
-                    <CheckBox x:Name="ShowEmptyHeadingsCheck"
-                              Grid.Column="1"
-                              Content="Show Empty Headings"
-                              VerticalAlignment="Center"
-                              Margin="0,0,10,0"
-                              Checked="ShowEmptyHeadingsCheck_Changed"
-                              Unchecked="ShowEmptyHeadingsCheck_Changed"/>
-                    <TextBlock Grid.Column="2"
-                               Text="Find"
-                               VerticalAlignment="Center"
-                               Margin="0,0,6,0"
-                               Foreground="#555555"/>
-                    <TextBox x:Name="SearchBox"
-                             Grid.Column="3"
-                             Padding="6,3"
-                             FontSize="13"
-                             BorderBrush="#CCCCCC"
-                             TextChanged="SearchBox_TextChanged"
-                             KeyDown="SearchBox_KeyDown"
-                             ToolTip="Search (Ctrl+F or /)"/>
-                    <CheckBox x:Name="ShowDoneCheck"
-                              Grid.Column="4"
-                              Content="+ Done"
-                              VerticalAlignment="Center"
-                              Margin="8,0,8,0"
-                              Checked="ShowDoneCheck_Changed"
-                              Unchecked="ShowDoneCheck_Changed"/>
-                    <ComboBox x:Name="FilterCombo"
-                              Grid.Column="5"
-                              Width="116"
-                              SelectionChanged="FilterCombo_SelectionChanged"/>
-                    <ComboBox x:Name="DateFilterCombo"
-                              Grid.Column="6"
-                              Width="116"
-                              Margin="8,0,0,0"
-                              SelectionChanged="DateFilterCombo_SelectionChanged"/>
-                </Grid>
-                <Grid Margin="8,0,8,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="View:"
-                               VerticalAlignment="Center"
-                               Margin="0,0,6,0"
-                               FontSize="11"
-                               Foreground="#555555"/>
-                    <ComboBox x:Name="PerspectiveCombo"
-                              Grid.Column="1"
-                              Width="120"
-                              FontSize="11"
-                              SelectionChanged="PerspectiveCombo_SelectionChanged"
-                              ToolTip="Built-in perspectives (Inbox, Forecast, Available, Waiting, Someday, Completed, Review)"/>
-                </Grid>
-            </StackPanel>
-        </Border>
-        <Border DockPanel.Dock="Bottom" Background="#F0F0F0" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0">
-            <TextBlock x:Name="StatusText" Margin="8,4" FontSize="12" Foreground="#555555"/>
         </Border>
         <Border DockPanel.Dock="Bottom" Background="#F8F8F8" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0">
             <WrapPanel x:Name="TagBar" Margin="6,3"/>

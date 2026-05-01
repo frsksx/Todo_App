@@ -164,6 +164,8 @@ CREATE TABLE IF NOT EXISTS TaskItem (
     sort_order REAL NOT NULL,
     start_at TEXT,
     due_at TEXT,
+    recurrence TEXT,
+    link TEXT,
     completed_at TEXT,
     archived_at TEXT,
     created_at TEXT NOT NULL,
@@ -198,6 +200,8 @@ CREATE TABLE IF NOT EXISTS Reminder (
         EnsureColumn(conn, "Heading", "last_reviewed_at", "TEXT");
         EnsureColumn(conn, "Heading", "next_review_at", "TEXT");
         EnsureColumn(conn, "TaskItem", "page_id", "TEXT");
+        EnsureColumn(conn, "TaskItem", "recurrence", "TEXT");
+        EnsureColumn(conn, "TaskItem", "link", "TEXT");
         ExecuteNonQuery(conn, "UPDATE Heading SET page_id=$page WHERE page_id IS NULL OR page_id=''", ("$page", defaultPageId.ToString()));
         ExecuteNonQuery(conn, "UPDATE TaskItem SET page_id=$page WHERE page_id IS NULL OR page_id=''", ("$page", defaultPageId.ToString()));
         MigrateTaskStatesIfNeeded(conn);
@@ -519,7 +523,7 @@ ON CONFLICT(id) DO UPDATE SET
         var archivedPredicate = includeArchived ? "" : " AND archived_at IS NULL";
         var pagePredicate = pageId.HasValue ? " AND page_id=$page" : "";
         cmd.CommandText = $@"SELECT id, page_id, heading_id, title, notes, state, sort_order, start_at, due_at,
-completed_at, archived_at, created_at, updated_at, deleted_at
+recurrence, link, completed_at, archived_at, created_at, updated_at, deleted_at
 FROM TaskItem WHERE deleted_at IS NULL{archivedPredicate}{pagePredicate} ORDER BY sort_order";
         if (pageId.HasValue) cmd.Parameters.AddWithValue("$page", pageId.Value.ToString());
         using var r = cmd.ExecuteReader();
@@ -537,11 +541,13 @@ FROM TaskItem WHERE deleted_at IS NULL{archivedPredicate}{pagePredicate} ORDER B
                 SortOrder = r.GetDouble(6),
                 StartAt = ParseUtcNullable(r.IsDBNull(7) ? null : r.GetValue(7)),
                 DueAt = ParseUtcNullable(r.IsDBNull(8) ? null : r.GetValue(8)),
-                CompletedAt = ParseUtcNullable(r.IsDBNull(9) ? null : r.GetValue(9)),
-                ArchivedAt = ParseUtcNullable(r.IsDBNull(10) ? null : r.GetValue(10)),
-                CreatedAt = ParseUtc(r.GetString(11)),
-                UpdatedAt = ParseUtc(r.GetString(12)),
-                DeletedAt = ParseUtcNullable(r.IsDBNull(13) ? null : r.GetValue(13)),
+                Recurrence = r.IsDBNull(9) ? null : r.GetString(9),
+                Link = r.IsDBNull(10) ? null : r.GetString(10),
+                CompletedAt = ParseUtcNullable(r.IsDBNull(11) ? null : r.GetValue(11)),
+                ArchivedAt = ParseUtcNullable(r.IsDBNull(12) ? null : r.GetValue(12)),
+                CreatedAt = ParseUtc(r.GetString(13)),
+                UpdatedAt = ParseUtc(r.GetString(14)),
+                DeletedAt = ParseUtcNullable(r.IsDBNull(15) ? null : r.GetValue(15)),
             });
         }
         LoadTagsForTasks(conn, list);
@@ -577,8 +583,8 @@ ORDER BY tag.display_name COLLATE NOCASE";
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = @"
-INSERT INTO TaskItem (id, page_id, heading_id, title, notes, state, sort_order, start_at, due_at, completed_at, archived_at, created_at, updated_at, deleted_at)
-VALUES ($id, $page, $heading, $title, $notes, $state, $sort, $start, $due, $completed, $archived, $created, $updated, $deleted)
+INSERT INTO TaskItem (id, page_id, heading_id, title, notes, state, sort_order, start_at, due_at, recurrence, link, completed_at, archived_at, created_at, updated_at, deleted_at)
+VALUES ($id, $page, $heading, $title, $notes, $state, $sort, $start, $due, $recurrence, $link, $completed, $archived, $created, $updated, $deleted)
 ON CONFLICT(id) DO UPDATE SET
     page_id=excluded.page_id,
     heading_id=excluded.heading_id,
@@ -588,6 +594,8 @@ ON CONFLICT(id) DO UPDATE SET
     sort_order=excluded.sort_order,
     start_at=excluded.start_at,
     due_at=excluded.due_at,
+    recurrence=excluded.recurrence,
+    link=excluded.link,
     completed_at=excluded.completed_at,
     archived_at=excluded.archived_at,
     updated_at=excluded.updated_at,
@@ -601,6 +609,8 @@ ON CONFLICT(id) DO UPDATE SET
         cmd.Parameters.AddWithValue("$sort", t.SortOrder);
         cmd.Parameters.AddWithValue("$start", (object?)IsoNullable(t.StartAt) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$due", (object?)IsoNullable(t.DueAt) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$recurrence", (object?)t.Recurrence ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$link", (object?)t.Link ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$completed", (object?)IsoNullable(t.CompletedAt) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$archived", (object?)IsoNullable(t.ArchivedAt) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$created", Iso(t.CreatedAt));
