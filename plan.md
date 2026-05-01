@@ -1,5 +1,22 @@
 # Plan: Move v1 toward Tudumo speed, Due persistence, and OmniFocus workflow
 
+## Milestone completion status (auto-updated)
+
+| Phase | Status | Notes |
+|---|---|---|
+| A0 — Foundations | ✅ Done | Build clean, 42/42 tests pass, scripts + DIAGNOSTICS.md in place |
+| A — Visual + interaction parity | ✅ Done | State glyphs, density, inline edit, row expand, heading collapse/focus, filters |
+| Ap — Pages | ✅ Done | Page entity, tab strip, keyboard, per-page view state, quick-add selector |
+| A2 — Tag system | ✅ Done | @-token extraction, page-scoped Tag/TaskTag, bottom tag bar, filter compose |
+| A3 — Filter rework | ✅ Done | ComposedFilterCriteria, DateFilterCombo, all predicates compose via AND |
+| A4 — Reordering | ✅ Done | Ctrl+Shift+Arrow keyboard moves, SortOrderMath, drag-and-drop |
+| A5 — Filter button + state model | ✅ Done | 6-state model, Ctrl+1–8 hotkeys, inline date chips (start/due clickable with inline TextBox edit) |
+| A6 — Due + OmniFocus workflow | ✅ Done | Quick presets (A6.1), visible snooze (A6.2), ReminderAction commands (A6.3), Inbox filter (A6.4), Forecast view (A6.5), review metadata on Heading (A6.6), built-in Perspectives dropdown (A6.7) |
+| B — Chrome polish | ✅ Done | Menu bar (File/Edit/View/Tools/Help), Settings/Backup/About stubs; send-to-tray + New▼ deferred to future |
+| C — Bug-fixes | ✅ Done | Hotkey schema updated, inline editor guard verified, inline heading create, DB snapshot caching, SDD update |
+
+
+
 This plan reviews the v1 prototype against three useful reference points:
 
 - **Tudumo** for dense keyboard-first GTD task manipulation.

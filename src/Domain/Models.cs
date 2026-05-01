@@ -40,6 +40,9 @@ public sealed class Heading
     public string Title { get; set; } = "";
     public double SortOrder { get; set; }
     public bool Collapsed { get; set; }
+    public int ReviewIntervalDays { get; set; } = 7;
+    public DateTime? LastReviewedAt { get; set; }
+    public DateTime? NextReviewAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public DateTime? DeletedAt { get; set; }
@@ -52,7 +55,7 @@ public sealed class TaskItem
     public Guid? HeadingId { get; set; }
     public string Title { get; set; } = "";
     public string? Notes { get; set; }
-    public TaskState State { get; set; } = TaskState.Inbox;
+    public TaskState State { get; set; } = TaskState.Action;
     public double SortOrder { get; set; }
     public DateTime? StartAt { get; set; }
     public DateTime? DueAt { get; set; }

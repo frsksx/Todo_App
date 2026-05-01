@@ -29,8 +29,29 @@ public partial class QuickAddWindow : Window
     {
         ReloadPages();
         ReloadHeadings();
+        BuildPresetButtons();
         TitleBox.Focus();
-        HintText.Text = "Save: Enter · Cancel: Esc · Reminder shorthand: +5m, +2h, +1d";
+        HintText.Text = "Save: Enter · Cancel: Esc · Reminder: +5m, +2h, tomorrow 9, next workday";
+    }
+
+    private void BuildPresetButtons()
+    {
+        ReminderPresets.Children.Clear();
+        foreach (var preset in Domain.QuickPresets.All)
+        {
+            var btn = new System.Windows.Controls.Button
+            {
+                Content = preset.Label,
+                Tag = preset.Shorthand,
+                Padding = new System.Windows.Thickness(5, 1, 5, 1),
+                Margin = new System.Windows.Thickness(0, 0, 4, 2),
+                FontSize = 10,
+                Background = System.Windows.Media.Brushes.Transparent,
+                BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xCC, 0xCC, 0xCC)),
+            };
+            btn.Click += (_, _) => ReminderBox.Text = (string)btn.Tag;
+            ReminderPresets.Children.Add(btn);
+        }
     }
 
     public void Reset()
@@ -96,7 +117,7 @@ public partial class QuickAddWindow : Window
             pageId,
             TitleBox.Text.Trim(),
             heading is null || heading.Id == Guid.Empty ? null : heading.Id,
-            TaskState.Inbox);
+            TaskState.Action);
         _db.SaveTask(task);
 
         if (reminderUtc.HasValue)

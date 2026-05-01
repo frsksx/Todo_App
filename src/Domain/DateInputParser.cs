@@ -34,6 +34,37 @@ public static class DateInputParser
             return null;
         }
 
+        // Keyword shorthands resolved in local time, then converted to UTC
+        var localNow = nowUtc.ToLocalTime();
+        var lowerT = t.ToLowerInvariant();
+
+        if (lowerT == "today")
+            return localNow.Date.AddHours(9).ToUniversalTime();
+
+        if (lowerT is "tomorrow" or "tomorrow 9" or "tmr" or "tmr 9")
+            return localNow.Date.AddDays(1).AddHours(9).ToUniversalTime();
+
+        if (lowerT.StartsWith("tomorrow ", StringComparison.OrdinalIgnoreCase))
+        {
+            var hourPart = lowerT["tomorrow ".Length..].Trim();
+            if (int.TryParse(hourPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var h) && h is >= 0 and <= 23)
+                return localNow.Date.AddDays(1).AddHours(h).ToUniversalTime();
+        }
+
+        if (lowerT is "this evening" or "evening")
+            return localNow.Date.AddHours(18).ToUniversalTime();
+
+        if (lowerT is "next workday" or "workday")
+        {
+            var daysAhead = localNow.DayOfWeek switch
+            {
+                DayOfWeek.Friday => 3,
+                DayOfWeek.Saturday => 2,
+                _ => 1,
+            };
+            return localNow.Date.AddDays(daysAhead).AddHours(9).ToUniversalTime();
+        }
+
         var explicitFormats = new[] { "yyyy-MM-dd HH:mm", "yyyy-MM-dd H:mm", "yyyy-MM-dd" };
         if (DateTime.TryParseExact(t, explicitFormats, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsed))
             return parsed.ToUniversalTime();

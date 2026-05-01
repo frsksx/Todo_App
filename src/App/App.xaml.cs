@@ -56,7 +56,7 @@ public partial class App : Application
         _tray = new TrayIconManager();
         _hotkeys = new GlobalHotkeyService();
 
-        _main = new MainWindow(_db, _reminders, _clock, _entities, () => ShowQuickAdd());
+        _main = new MainWindow(_db, _reminders, _clock, _entities, () => ShowInlineTaskAdd());
         _quickAdd = new QuickAddWindow(_db, _clock, _entities, () =>
         {
             _main!.Refresh();
@@ -135,7 +135,8 @@ public partial class App : Application
     }
 
     private void ShowMain() { _main!.ToggleVisibility(); }
-    private void ShowQuickAdd() { _quickAdd!.ShowQuickAdd(); }
+    private void ShowQuickAdd() { ShowInlineTaskAdd(); }
+    private void ShowInlineTaskAdd() { _main!.ShowForInlineTask(); }
 
     private void HandleIpc(string message)
     {
@@ -148,6 +149,7 @@ public partial class App : Application
 
     private void QuitApp()
     {
+        _main?.PrepareForShutdown();
         _reminders?.Dispose();
         _hotkeys?.Dispose();
         _tray?.Dispose();
@@ -157,6 +159,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _main?.PrepareForShutdown();
         _reminders?.Dispose();
         _hotkeys?.Dispose();
         _tray?.Dispose();

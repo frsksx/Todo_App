@@ -4,16 +4,16 @@
 winexe
 C#
 .cs
-C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\src\App\obj\Debug\net9.0-windows\
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\App\obj\Debug\net9.0-windows\
 WindowsTrayTasks
 none
 false
 TRACE;DEBUG;NET;NET9_0;NETCOREAPP
-C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\src\App\App.xaml
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\App\App.xaml
 4-944219224
 
 91981369232
-216-453092976
+2161315636964
 Views\MainWindow.xaml;Views\QuickAddWindow.xaml;Views\SimplePromptWindow.xaml;Views\TaskEditorWindow.xaml;
 
 False

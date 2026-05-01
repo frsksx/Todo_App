@@ -12,7 +12,7 @@ public sealed class TaskFilterTests
     {
         var tasks = new[]
         {
-            TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000001"), state: TaskState.Inbox),
+            TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000001"), state: TaskState.Action),
             TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000002"), state: TaskState.Next),
         };
 

@@ -145,6 +145,9 @@ CREATE TABLE IF NOT EXISTS Heading (
     title TEXT NOT NULL,
     sort_order REAL NOT NULL,
     collapsed INTEGER NOT NULL DEFAULT 0,
+    review_interval_days INTEGER NOT NULL DEFAULT 7,
+    last_reviewed_at TEXT,
+    next_review_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT,
@@ -191,6 +194,9 @@ CREATE TABLE IF NOT EXISTS Reminder (
 
         var defaultPageId = EnsureDefaultPage(conn);
         EnsureColumn(conn, "Heading", "page_id", "TEXT");
+        EnsureColumn(conn, "Heading", "review_interval_days", "INTEGER NOT NULL DEFAULT 7");
+        EnsureColumn(conn, "Heading", "last_reviewed_at", "TEXT");
+        EnsureColumn(conn, "Heading", "next_review_at", "TEXT");
         EnsureColumn(conn, "TaskItem", "page_id", "TEXT");
         ExecuteNonQuery(conn, "UPDATE Heading SET page_id=$page WHERE page_id IS NULL OR page_id=''", ("$page", defaultPageId.ToString()));
         ExecuteNonQuery(conn, "UPDATE TaskItem SET page_id=$page WHERE page_id IS NULL OR page_id=''", ("$page", defaultPageId.ToString()));
@@ -431,8 +437,10 @@ ON CONFLICT(key) DO UPDATE SET
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = pageId.HasValue
-            ? "SELECT id, page_id, title, sort_order, collapsed, created_at, updated_at, deleted_at FROM Heading WHERE deleted_at IS NULL AND page_id=$page ORDER BY sort_order ASC, title ASC"
-            : "SELECT id, page_id, title, sort_order, collapsed, created_at, updated_at, deleted_at FROM Heading WHERE deleted_at IS NULL ORDER BY sort_order ASC, title ASC";
+            ? @"SELECT id, page_id, title, sort_order, collapsed, review_interval_days, last_reviewed_at, next_review_at, created_at, updated_at, deleted_at
+FROM Heading WHERE deleted_at IS NULL AND page_id=$page ORDER BY sort_order ASC, title ASC"
+            : @"SELECT id, page_id, title, sort_order, collapsed, review_interval_days, last_reviewed_at, next_review_at, created_at, updated_at, deleted_at
+FROM Heading WHERE deleted_at IS NULL ORDER BY sort_order ASC, title ASC";
         if (pageId.HasValue) cmd.Parameters.AddWithValue("$page", pageId.Value.ToString());
         using var r = cmd.ExecuteReader();
         var list = new List<Heading>();
@@ -445,9 +453,12 @@ ON CONFLICT(key) DO UPDATE SET
                 Title = r.GetString(2),
                 SortOrder = r.GetDouble(3),
                 Collapsed = r.GetInt32(4) != 0,
-                CreatedAt = ParseUtc(r.GetString(5)),
-                UpdatedAt = ParseUtc(r.GetString(6)),
-                DeletedAt = ParseUtcNullable(r.IsDBNull(7) ? null : r.GetValue(7)),
+                ReviewIntervalDays = r.GetInt32(5),
+                LastReviewedAt = ParseUtcNullable(r.IsDBNull(6) ? null : r.GetValue(6)),
+                NextReviewAt = ParseUtcNullable(r.IsDBNull(7) ? null : r.GetValue(7)),
+                CreatedAt = ParseUtc(r.GetString(8)),
+                UpdatedAt = ParseUtc(r.GetString(9)),
+                DeletedAt = ParseUtcNullable(r.IsDBNull(10) ? null : r.GetValue(10)),
             });
         }
         return list;
@@ -463,13 +474,16 @@ ON CONFLICT(key) DO UPDATE SET
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-INSERT INTO Heading (id, page_id, title, sort_order, collapsed, created_at, updated_at, deleted_at)
-VALUES ($id, $page, $title, $sort, $collapsed, $created, $updated, $deleted)
+INSERT INTO Heading (id, page_id, title, sort_order, collapsed, review_interval_days, last_reviewed_at, next_review_at, created_at, updated_at, deleted_at)
+VALUES ($id, $page, $title, $sort, $collapsed, $reviewInterval, $lastReviewed, $nextReview, $created, $updated, $deleted)
 ON CONFLICT(id) DO UPDATE SET
     page_id=excluded.page_id,
     title=excluded.title,
     sort_order=excluded.sort_order,
     collapsed=excluded.collapsed,
+    review_interval_days=excluded.review_interval_days,
+    last_reviewed_at=excluded.last_reviewed_at,
+    next_review_at=excluded.next_review_at,
     updated_at=excluded.updated_at,
     deleted_at=excluded.deleted_at;";
         cmd.Parameters.AddWithValue("$id", h.Id.ToString());
@@ -477,6 +491,9 @@ ON CONFLICT(id) DO UPDATE SET
         cmd.Parameters.AddWithValue("$title", h.Title);
         cmd.Parameters.AddWithValue("$sort", h.SortOrder);
         cmd.Parameters.AddWithValue("$collapsed", h.Collapsed ? 1 : 0);
+        cmd.Parameters.AddWithValue("$reviewInterval", h.ReviewIntervalDays);
+        cmd.Parameters.AddWithValue("$lastReviewed", (object?)IsoNullable(h.LastReviewedAt) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$nextReview", (object?)IsoNullable(h.NextReviewAt) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$created", Iso(h.CreatedAt));
         cmd.Parameters.AddWithValue("$updated", Iso(h.UpdatedAt));
         cmd.Parameters.AddWithValue("$deleted", (object?)IsoNullable(h.DeletedAt) ?? DBNull.Value);
@@ -499,7 +516,7 @@ ON CONFLICT(id) DO UPDATE SET
     {
         using var conn = Open();
         using var cmd = conn.CreateCommand();
-        var archivedPredicate = includeArchived ? "" : " AND state != 7";
+        var archivedPredicate = includeArchived ? "" : " AND archived_at IS NULL";
         var pagePredicate = pageId.HasValue ? " AND page_id=$page" : "";
         cmd.CommandText = $@"SELECT id, page_id, heading_id, title, notes, state, sort_order, start_at, due_at,
 completed_at, archived_at, created_at, updated_at, deleted_at
@@ -629,7 +646,7 @@ FROM TaskTag tt
 JOIN TaskItem t ON t.id = tt.task_id
 JOIN Tag tag ON tag.id = tt.tag_id
 WHERE t.deleted_at IS NULL
-  AND t.state != 7
+  AND t.archived_at IS NULL
   AND tag.deleted_at IS NULL
   AND tag.page_id = $page
 GROUP BY tt.tag_id";

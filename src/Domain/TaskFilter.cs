@@ -29,11 +29,35 @@ public sealed record ComposedFilterCriteria(
     IReadOnlySet<string> TagNames,
     bool UntaggedOnly,
     Guid? FocusedHeadingId,
-    DateTime NowUtc
+    DateTime NowUtc,
+    bool InboxOnly = false
 )
 {
     public static ComposedFilterCriteria Default(DateTime nowUtc, Guid? pageId = null)
         => new(pageId, "All", false, DateFilterBucket.All, string.Empty, new HashSet<string>(StringComparer.OrdinalIgnoreCase), false, null, nowUtc);
+}
+
+public enum PerspectiveKind { Normal, Forecast, Inbox, Available, Waiting, Someday, Completed, Review }
+
+public sealed record Perspective(string Name, PerspectiveKind Kind, ComposedFilterCriteria? Criteria = null)
+{
+    public static readonly IReadOnlyList<Perspective> BuiltIns = BuildBuiltIns();
+
+    private static IReadOnlyList<Perspective> BuildBuiltIns()
+    {
+        var emptyTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var epoch = DateTime.UtcNow;
+        return
+        [
+            new("Inbox",     PerspectiveKind.Inbox,     new(null, "Actions + Next", false, DateFilterBucket.All, "", emptyTags, false, null, epoch, InboxOnly: true)),
+            new("Forecast",  PerspectiveKind.Forecast,  null),
+            new("Available", PerspectiveKind.Available, new(null, "Actions + Next", false, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
+            new("Waiting",   PerspectiveKind.Waiting,   new(null, "Only Waiting For", false, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
+            new("Someday",   PerspectiveKind.Someday,   new(null, "Only Someday/Maybe", false, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
+            new("Completed", PerspectiveKind.Completed, new(null, "Only Completed", true, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
+            new("Review",    PerspectiveKind.Review,    new(null, "Show All", false, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
+        ];
+    }
 }
 
 public static class TaskFilter
@@ -77,6 +101,11 @@ public static class TaskFilter
         if (criteria.PageId is { } pageId)
         {
             filtered = filtered.Where(t => t.PageId == pageId);
+        }
+
+        if (criteria.InboxOnly)
+        {
+            filtered = filtered.Where(t => t.HeadingId is null);
         }
 
         if (criteria.FocusedHeadingId is { } focused)

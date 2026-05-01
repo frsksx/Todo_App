@@ -44,7 +44,7 @@ Relevant sources:
 
 Tudumo was a Windows GTD-style task manager built around speed, headings/projects, task states, due/start dates, notes, search, and keyboard control. Historical sources describe global tray hotkeys, quick-add, keyboard navigation, note editing, date editing, state filtering, heading focus, and incremental search.
 
-This product keeps Tudumo's keyboard-first task-management spirit but intentionally removes tags. The rationale is that headings/projects already give one strong axis of grouping, GTD-style "context" can be encoded in heading naming conventions (e.g. "@Calls", "@Errands") without a separate tag system, and removing tags simplifies the data model, the keyboard model, and the visual hierarchy. If a context dimension is needed later it will be added as a single optional `context` string per task rather than as a free-form many-to-many tag system.
+This product keeps Tudumo's keyboard-first task-management spirit and adopts Tudumo-style inline `@tag` contexts. Headings/projects remain the primary planning axis, while tags provide the cross-heading context axis for views like `@Calls`, `@Computer`, or `@Errands`. Tags are page-scoped, auto-extracted from task titles, and represented as a many-to-many `TaskTag` relation so one task can carry multiple contexts.
 
 Relevant sources:
 
@@ -104,7 +104,7 @@ Relevant sources:
 - No mobile app in the first version.
 - No cloud sync in the first version.
 - No natural-language date parsing in the first version.
-- No tags (see §3.2 for rationale).
+- No manual tag-management-heavy workflow in the first version; tags are auto-extracted from task titles.
 - No team collaboration.
 - No web app.
 - No email/calendar integration in the first version.
@@ -277,17 +277,18 @@ MVP target: classic Outlook for Windows first. New Outlook support is treated as
 
 ### 8.2 Task States
 
-Default states (7 total):
+Default action states (6 total):
 
-1. Inbox
+1. Action
 2. Next
-3. Waiting
-4. Scheduled
-5. Someday
+3. On Hold
+4. Waiting
+5. Someday/Maybe
 6. Done
-7. Archived
 
-State-set hotkeys are `1`–`7` (see §8.7). State-filter hotkeys are `Ctrl+1`–`Ctrl+7`.
+Inbox is a capture view for tasks without an assigned heading/project, not a task state. Scheduled work is represented by `startAt`, `dueAt`, or an active reminder rather than a separate state. Archived work is represented by `archivedAt` on completed tasks.
+
+State-set hotkeys are `1`–`6` (see §8.7). State-filter hotkeys are `Ctrl+1`–`Ctrl+8`.
 
 Reminders may be attached to tasks in any state. A task in `Someday` or `Waiting` with a reminder fires normally; the state controls visibility in default filters, not reminder behavior.
 
@@ -399,13 +400,15 @@ In-app shortcuts:
 - `Ctrl+Enter`: edit note
 - `Ctrl+D`: edit due date/reminder
 - `Ctrl+Shift+D`: edit start date
-- `1`–`7`: set task state
-- `Ctrl+1`–`Ctrl+7`: filter by state
+- `1`–`6`: set task state
+- `Ctrl+1`–`Ctrl+8`: filter by view (`Only Next`, `Actions + Next`, `All except Done`, `Show All`, `Only On Hold`, `Only Waiting For`, `Only Someday/Maybe`, `Only Completed`)
+- `Ctrl+Tab`: switch pages
+- `Ctrl+Alt+1`–`Ctrl+Alt+9`: jump to page 1-9
 - `Arrow Up/Down`: move selection
 - `Ctrl+Arrow Up/Down`: jump between headings
 - `Ctrl+Shift+Arrow Up/Down`: move selected task
 - `Left/Right`: collapse/expand or focus/defocus heading
-- `Space`: toggle completion or heading focus, depending on selection
+- `Space`: expand/collapse the selected task row or focus/defocus the selected heading
 - `/` or `Ctrl+F`: search
 - `Esc`: close search, close editor, or hide window depending on context
 
@@ -675,11 +678,12 @@ All datetime fields are stored as UTC instants. Fields with wall-clock semantics
 ### 12.1 Entity: TaskItem
 
 - `id`: UUID
+- `pageId`: UUID
 - `headingId`: UUID nullable
 - `recurrenceSeriesId`: UUID nullable (set for tasks that are part of a recurring series)
 - `title`: string
 - `notes`: string nullable
-- `state`: enum (`inbox`/`next`/`waiting`/`scheduled`/`someday`/`done`/`archived`)
+- `state`: enum (`action`/`next`/`on_hold`/`waiting`/`someday`/`done`)
 - `sortOrder`: fractional sortable key
 - `startAt`: datetime (UTC) nullable
 - `startAtTimezone`: string nullable
@@ -694,12 +698,46 @@ All datetime fields are stored as UTC instants. Fields with wall-clock semantics
 ### 12.2 Entity: Heading
 
 - `id`: UUID
+- `pageId`: UUID
 - `title`: string
 - `sortOrder`: fractional sortable key
 - `collapsed`: boolean
 - `defaultNotificationMode`: enum nullable (per-heading override of app default; per-task settings override this in turn)
 - `createdAt`, `updatedAt`, `deletedAt`: datetime (UTC)
 - `hlc`: string
+
+### 12.2a Entity: Page
+
+- `id`: UUID
+- `name`: string
+- `sortOrder`: fractional sortable key
+- `lastFilterView`: string
+- `lastFocusedHeadingId`: UUID nullable
+- `lastSearchText`: string nullable
+- `isDefault`: boolean
+- `createdAt`, `updatedAt`, `deletedAt`: datetime (UTC)
+- `hlc`: string
+
+### 12.2b Entities: Tag and TaskTag
+
+`Tag`:
+
+- `id`: UUID
+- `pageId`: UUID
+- `name`: normalized string, unique per page among non-deleted tags
+- `displayName`: string
+- `sortOrder`: fractional sortable key
+- `color`: string nullable
+- `createdAt`, `updatedAt`, `deletedAt`: datetime (UTC)
+- `hlc`: string
+
+`TaskTag`:
+
+- `taskId`: UUID
+- `tagId`: UUID
+- `createdAt`: datetime (UTC)
+
+Tags are auto-extracted from `@token` patterns in task titles. Removing a token from the title removes that `TaskTag` link on save.
 
 ### 12.3 Entity: Reminder
 
@@ -1103,7 +1141,7 @@ This section is informational; future drafts may remove it.
 - Persistence: direct `Microsoft.Data.Sqlite` with hand-rolled repositories; no EF Core. (§10.2)
 - Reminders without due dates are supported; reminder is canonical, due date is metadata. (§8.3)
 - Hotkeys retargeted to avoid PowerToys/IME conflicts: `Ctrl+Alt+Q` (quick-add), `Ctrl+Alt+T` (show/hide), `Ctrl+Alt+R` (review). (§8.7)
-- Task states are 7; hotkeys `1`–`7` and `Ctrl+1`–`Ctrl+7`. (§8.2, §8.7)
+- Task states are 6 action states; Inbox is a capture view, Scheduled is date/reminder metadata, and Archived is `archivedAt`. Hotkeys are `1`-`6` for state and `Ctrl+1`-`Ctrl+8` for filter views. (§8.2, §8.7)
 - DST/leap-year/end-of-month/week-start rules defined. (§8.5)
 - Timestamps: UTC + IANA zone for wall-clock fields; HLC for sync ordering. (§9.5, §12)
 - ChangeLog stores per-field deltas, not just hashes; conflict strategy is per-field LWW keyed by HLC. (§8.9, §12.7)
@@ -1114,4 +1152,4 @@ This section is informational; future drafts may remove it.
 - Backup uses SQLite online backup API; default location warns against cloud-sync paths. (§7.6, §8.9)
 - Plain-text import/export format defined as Markdown-style. (§8.1)
 - Today Review mode added. (§7.8)
-- Tags removal justified rather than asserted. (§3.2)
+- Tags are in scope as page-scoped, title-extracted, many-to-many contexts. (§3.2, §12.2b)

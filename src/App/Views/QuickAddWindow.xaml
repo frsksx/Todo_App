@@ -30,8 +30,9 @@
                 <ComboBox x:Name="HeadingCombo" Margin="0,2,0,0" DisplayMemberPath="Title"/>
             </StackPanel>
             <StackPanel Grid.Column="2" Margin="6,0,0,0">
-                <TextBlock Text="Reminder (yyyy-MM-dd HH:mm or +5m / +2h / +1d)" FontSize="11" Foreground="#666666"/>
-                <TextBox x:Name="ReminderBox" Padding="6,4" Margin="0,2,0,0"/>
+                <TextBlock Text="Reminder" FontSize="11" Foreground="#666666"/>
+                <TextBox x:Name="ReminderBox" Padding="6,4" Margin="0,2,0,4"/>
+                <WrapPanel x:Name="ReminderPresets" Orientation="Horizontal"/>
             </StackPanel>
         </Grid>
 

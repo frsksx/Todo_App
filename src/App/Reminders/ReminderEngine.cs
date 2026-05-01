@@ -63,23 +63,37 @@ public sealed class ReminderEngine : IDisposable
         StateChanged?.Invoke();
     }
 
-    public void Acknowledge(Guid taskId)
-    {
-        var rem = _db.GetReminderForTask(taskId);
-        if (rem is null) return;
-        rem.Status = ReminderStatus.Acknowledged;
-        rem.LastAcknowledgedAt = _clock.UtcNow;
-        rem.Enabled = false;
-        _db.SaveReminder(rem);
-        StateChanged?.Invoke();
-    }
+    public void Acknowledge(Guid taskId) => Execute(taskId, ReminderActions.Complete);
 
-    public void Snooze(Guid taskId, int minutes)
+    public void Snooze(Guid taskId, int minutes) =>
+        Execute(taskId, ReminderActions.SnoozeFor(TimeSpan.FromMinutes(minutes)));
+
+    public void Execute(Guid taskId, ReminderAction action)
     {
         var rem = _db.GetReminderForTask(taskId);
         if (rem is null) return;
-        rem.NextFireAt = _clock.UtcNow.AddMinutes(minutes);
-        rem.Status = ReminderStatus.Snoozed;
+        var now = _clock.UtcNow;
+        switch (action.Kind)
+        {
+            case ReminderActionKind.Complete:
+                rem.Status = ReminderStatus.Acknowledged;
+                rem.LastAcknowledgedAt = now;
+                rem.Enabled = false;
+                break;
+            case ReminderActionKind.Snooze when action.SnoozeDuration is { } dur:
+                rem.NextFireAt = now + dur;
+                rem.Status = ReminderStatus.Snoozed;
+                break;
+            case ReminderActionKind.Reschedule when action.RescheduleAt is { } at:
+                rem.FireAt = at;
+                rem.NextFireAt = at;
+                rem.Status = ReminderStatus.Active;
+                break;
+            case ReminderActionKind.Disable:
+                rem.Status = ReminderStatus.Disabled;
+                rem.Enabled = false;
+                break;
+        }
         _db.SaveReminder(rem);
         StateChanged?.Invoke();
     }

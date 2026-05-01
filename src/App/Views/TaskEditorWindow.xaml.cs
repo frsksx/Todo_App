@@ -98,7 +98,7 @@ public partial class TaskEditorWindow : Window
 
         _task.Title = TitleBox.Text.Trim();
         _task.Notes = string.IsNullOrWhiteSpace(NotesBox.Text) ? null : NotesBox.Text;
-        _task.State = (TaskState)(StateCombo.SelectedItem ?? TaskState.Inbox);
+        _task.State = (TaskState)(StateCombo.SelectedItem ?? TaskState.Action);
         _task.StartAt = start;
         _task.DueAt = due;
 
@@ -107,7 +107,6 @@ public partial class TaskEditorWindow : Window
 
         if (_task.State == TaskState.Done && _task.CompletedAt is null) _task.CompletedAt = _clock.UtcNow;
         if (_task.State != TaskState.Done) _task.CompletedAt = null;
-        if (_task.State == TaskState.Archived && _task.ArchivedAt is null) _task.ArchivedAt = _clock.UtcNow;
 
         if (_task.SortOrder == 0)
             _task.SortOrder = EntityFactory.DefaultSortOrder(_clock.UtcNow);
