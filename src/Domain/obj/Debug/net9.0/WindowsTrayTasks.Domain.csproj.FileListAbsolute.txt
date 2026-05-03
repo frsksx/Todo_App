@@ -24,3 +24,6 @@ C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\Domain\obj\De
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.Domain.deps.json
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.Domain.dll
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.Domain.pdb
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.Domain.deps.json
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.Domain.dll
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.Domain.pdb

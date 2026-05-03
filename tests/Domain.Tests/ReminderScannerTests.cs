@@ -61,4 +61,20 @@ public sealed class ReminderScannerTests
         Assert.Empty(result.FiredReminders);
         Assert.Equal(0, result.ActiveCount);
     }
+
+    [Fact]
+    public void Scan_OneShotReminder_DoesNotFireAgainAfterFirstOverdueNotification()
+    {
+        var reminder = TestEntities.Reminder(
+            nextFireAt: Now.AddMinutes(-1),
+            autoSnooze: false);
+
+        var first = ReminderScanner.Scan([reminder], Now);
+        var second = ReminderScanner.Scan([reminder], Now.AddSeconds(20));
+
+        Assert.Single(first.FiredReminders);
+        Assert.Empty(second.FiredReminders);
+        Assert.Equal(1, second.OverdueCount);
+        Assert.Equal(ReminderStatus.Overdue, reminder.Status);
+    }
 }

@@ -32,3 +32,6 @@ C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\Infrastructur
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.Infrastructure.deps.json
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.Infrastructure.dll
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.Infrastructure.pdb
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.Infrastructure.deps.json
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.Infrastructure.dll
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.Infrastructure.pdb

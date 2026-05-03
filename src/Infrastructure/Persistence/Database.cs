@@ -1,9 +1,21 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WindowsTrayTasks.Domain;
 using WindowsTrayTasks.Infrastructure;
 
 namespace WindowsTrayTasks.Infrastructure.Persistence;
+
+public sealed record SyncOutboxEntry(
+    Guid Id,
+    string EntityType,
+    string EntityId,
+    string Operation,
+    string? PayloadJson,
+    DateTime CreatedAt,
+    int AttemptCount,
+    string? LastError,
+    DateTime? LockedAt);
 
 public sealed class Database : IDisposable
 {
@@ -166,6 +178,8 @@ CREATE TABLE IF NOT EXISTS TaskItem (
     due_at TEXT,
     recurrence TEXT,
     link TEXT,
+    priority INTEGER,
+    effort_hours INTEGER,
     completed_at TEXT,
     archived_at TEXT,
     created_at TEXT NOT NULL,
@@ -188,7 +202,26 @@ CREATE TABLE IF NOT EXISTS Reminder (
     status INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    deleted_at TEXT,
     FOREIGN KEY (task_id) REFERENCES TaskItem(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS SyncOutbox (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    payload_json TEXT,
+    created_at TEXT NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    locked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS SyncCursor (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TEXT NOT NULL
 );
 
 ";
@@ -202,6 +235,10 @@ CREATE TABLE IF NOT EXISTS Reminder (
         EnsureColumn(conn, "TaskItem", "page_id", "TEXT");
         EnsureColumn(conn, "TaskItem", "recurrence", "TEXT");
         EnsureColumn(conn, "TaskItem", "link", "TEXT");
+        EnsureColumn(conn, "TaskItem", "priority", "INTEGER");
+        EnsureColumn(conn, "TaskItem", "effort_hours", "INTEGER");
+        EnsureColumn(conn, "TaskItem", "archived_at", "TEXT");
+        EnsureColumn(conn, "Reminder", "deleted_at", "TEXT");
         ExecuteNonQuery(conn, "UPDATE Heading SET page_id=$page WHERE page_id IS NULL OR page_id=''", ("$page", defaultPageId.ToString()));
         ExecuteNonQuery(conn, "UPDATE TaskItem SET page_id=$page WHERE page_id IS NULL OR page_id=''", ("$page", defaultPageId.ToString()));
         MigrateTaskStatesIfNeeded(conn);
@@ -212,7 +249,9 @@ CREATE TABLE IF NOT EXISTS Reminder (
         ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS idx_tasktag_tag ON TaskTag(tag_id)");
         ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS idx_task_heading ON TaskItem(heading_id) WHERE deleted_at IS NULL");
         ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS idx_reminder_active ON Reminder(next_fire_at) WHERE status IN (0, 1, 2) AND enabled = 1");
-        ExecuteNonQuery(conn, "CREATE UNIQUE INDEX IF NOT EXISTS ux_reminder_one_active_per_task ON Reminder(task_id) WHERE status IN (0, 1, 2) AND enabled = 1");
+        ExecuteNonQuery(conn, "CREATE UNIQUE INDEX IF NOT EXISTS ux_reminder_one_active_per_task ON Reminder(task_id) WHERE status IN (0, 1, 2) AND enabled = 1 AND deleted_at IS NULL");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS idx_sync_outbox_created ON SyncOutbox(created_at)");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS idx_sync_outbox_entity ON SyncOutbox(entity_type, entity_id)");
     }
 
     private Guid EnsureDefaultPage(SqliteConnection conn)
@@ -268,15 +307,133 @@ VALUES ($id, 'Tasks', 0, 'All', 1, $created, $updated);";
         cmd.ExecuteNonQuery();
     }
 
+    private static string JsonPayload(object value)
+        => JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = false });
+
+    private void EnqueueSyncChange(
+        SqliteConnection conn,
+        SqliteTransaction? tx,
+        string entityType,
+        string entityId,
+        string operation,
+        string? payloadJson)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = @"
+INSERT INTO SyncOutbox (id, entity_type, entity_id, operation, payload_json, created_at)
+VALUES ($id, $entityType, $entityId, $operation, $payload, $created);";
+        cmd.Parameters.AddWithValue("$id", _ids.NewId().ToString());
+        cmd.Parameters.AddWithValue("$entityType", entityType);
+        cmd.Parameters.AddWithValue("$entityId", entityId);
+        cmd.Parameters.AddWithValue("$operation", operation);
+        cmd.Parameters.AddWithValue("$payload", (object?)payloadJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$created", Iso(_clock.UtcNow));
+        cmd.ExecuteNonQuery();
+    }
+
+    public void EnqueueSyncChange(string entityType, string entityId, string operation, string? payloadJson = null)
+    {
+        using var conn = Open();
+        EnqueueSyncChange(conn, null, entityType, entityId, operation, payloadJson);
+    }
+
+    public List<SyncOutboxEntry> GetSyncChanges(int limit = 100)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+SELECT id, entity_type, entity_id, operation, payload_json, created_at, attempt_count, last_error, locked_at
+FROM SyncOutbox
+ORDER BY created_at ASC, id ASC
+LIMIT $limit";
+        cmd.Parameters.AddWithValue("$limit", limit);
+        using var r = cmd.ExecuteReader();
+        var changes = new List<SyncOutboxEntry>();
+        while (r.Read())
+        {
+            changes.Add(new SyncOutboxEntry(
+                Guid.Parse(r.GetString(0)),
+                r.GetString(1),
+                r.GetString(2),
+                r.GetString(3),
+                r.IsDBNull(4) ? null : r.GetString(4),
+                ParseUtc(r.GetString(5)),
+                r.GetInt32(6),
+                r.IsDBNull(7) ? null : r.GetString(7),
+                ParseUtcNullable(r.IsDBNull(8) ? null : r.GetValue(8))));
+        }
+        return changes;
+    }
+
+    public int GetPendingSyncChangeCount()
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM SyncOutbox";
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    public void MarkSyncChangeComplete(Guid id)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM SyncOutbox WHERE id=$id";
+        cmd.Parameters.AddWithValue("$id", id.ToString());
+        cmd.ExecuteNonQuery();
+    }
+
+    public void MarkSyncChangeFailed(Guid id, string error)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+UPDATE SyncOutbox
+SET attempt_count=attempt_count + 1,
+    last_error=$error,
+    locked_at=NULL
+WHERE id=$id";
+        cmd.Parameters.AddWithValue("$id", id.ToString());
+        cmd.Parameters.AddWithValue("$error", error);
+        cmd.ExecuteNonQuery();
+    }
+
+    public string? GetSyncCursor(string key)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT value FROM SyncCursor WHERE key=$key";
+        cmd.Parameters.AddWithValue("$key", key);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public void SaveSyncCursor(string key, string? value)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO SyncCursor (key, value, updated_at)
+VALUES ($key, $value, $updated)
+ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at;";
+        cmd.Parameters.AddWithValue("$key", key);
+        cmd.Parameters.AddWithValue("$value", (object?)value ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$updated", Iso(_clock.UtcNow));
+        cmd.ExecuteNonQuery();
+    }
+
     private void MigrateTaskStatesIfNeeded(SqliteConnection conn)
     {
+        var version = "";
         using (var get = conn.CreateCommand())
         {
             get.CommandText = "SELECT value FROM AppSetting WHERE key='state_model_version'";
-            if ((get.ExecuteScalar() as string) == "2") return;
+            version = get.ExecuteScalar() as string ?? "";
+            if (version == "3") return;
         }
 
-        ExecuteNonQuery(conn, @"
+        if (version != "2")
+        {
+            ExecuteNonQuery(conn, @"
 UPDATE TaskItem
 SET archived_at = CASE WHEN state = 7 AND archived_at IS NULL THEN updated_at ELSE archived_at END,
     state = CASE state
@@ -286,15 +443,23 @@ SET archived_at = CASE WHEN state = 7 AND archived_at IS NULL THEN updated_at EL
         WHEN 4 THEN 2
         WHEN 5 THEN 5
         WHEN 6 THEN 6
-        WHEN 7 THEN 6
+        WHEN 7 THEN 7
         ELSE 1
     END");
+        }
+        else
+        {
+            ExecuteNonQuery(conn, @"
+UPDATE TaskItem
+SET state = 7
+WHERE archived_at IS NOT NULL");
+        }
 
         using var set = conn.CreateCommand();
         set.CommandText = @"
 INSERT INTO AppSetting (key, value, updated_at)
-VALUES ('state_model_version', '2', $updated)
-ON CONFLICT(key) DO UPDATE SET value='2', updated_at=excluded.updated_at;";
+VALUES ('state_model_version', '3', $updated)
+ON CONFLICT(key) DO UPDATE SET value='3', updated_at=excluded.updated_at;";
         set.Parameters.AddWithValue("$updated", Iso(_clock.UtcNow));
         set.ExecuteNonQuery();
     }
@@ -347,14 +512,16 @@ FROM Page WHERE id=$id AND deleted_at IS NULL";
         return r.Read() ? ReadPage(r) : null;
     }
 
-    public void SavePage(Page page)
+    public void SavePage(Page page, bool enqueueSync = true)
     {
         if (page.Id == Guid.Empty) throw new ArgumentException("Page id must be set before saving.", nameof(page));
         var now = _clock.UtcNow;
         if (page.CreatedAt == default) page.CreatedAt = now;
         page.UpdatedAt = now;
         using var conn = Open();
+        using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = @"
 INSERT INTO Page (id, name, sort_order, last_filter_view, last_focused_heading_id, last_search_text,
                   is_default, created_at, updated_at, deleted_at)
@@ -379,6 +546,9 @@ ON CONFLICT(id) DO UPDATE SET
         cmd.Parameters.AddWithValue("$updated", Iso(page.UpdatedAt));
         cmd.Parameters.AddWithValue("$deleted", (object?)IsoNullable(page.DeletedAt) ?? DBNull.Value);
         cmd.ExecuteNonQuery();
+        if (enqueueSync)
+            EnqueueSyncChange(conn, tx, "page", page.Id.ToString(), page.DeletedAt is null ? "upsert" : "delete", JsonPayload(page));
+        tx.Commit();
     }
 
     public Guid GetActivePageId()
@@ -476,7 +646,9 @@ FROM Heading WHERE deleted_at IS NULL ORDER BY sort_order ASC, title ASC";
         if (h.CreatedAt == default) h.CreatedAt = now;
         h.UpdatedAt = now;
         using var conn = Open();
+        using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = @"
 INSERT INTO Heading (id, page_id, title, sort_order, collapsed, review_interval_days, last_reviewed_at, next_review_at, created_at, updated_at, deleted_at)
 VALUES ($id, $page, $title, $sort, $collapsed, $reviewInterval, $lastReviewed, $nextReview, $created, $updated, $deleted)
@@ -502,16 +674,23 @@ ON CONFLICT(id) DO UPDATE SET
         cmd.Parameters.AddWithValue("$updated", Iso(h.UpdatedAt));
         cmd.Parameters.AddWithValue("$deleted", (object?)IsoNullable(h.DeletedAt) ?? DBNull.Value);
         cmd.ExecuteNonQuery();
+        EnqueueSyncChange(conn, tx, "heading", h.Id.ToString(), h.DeletedAt is null ? "upsert" : "delete", JsonPayload(h));
+        tx.Commit();
     }
 
     public void DeleteHeading(Guid id)
     {
         using var conn = Open();
+        using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "UPDATE Heading SET deleted_at=$now, updated_at=$now WHERE id=$id";
-        cmd.Parameters.AddWithValue("$now", Iso(_clock.UtcNow));
+        var now = _clock.UtcNow;
+        cmd.Parameters.AddWithValue("$now", Iso(now));
         cmd.Parameters.AddWithValue("$id", id.ToString());
         cmd.ExecuteNonQuery();
+        EnqueueSyncChange(conn, tx, "heading", id.ToString(), "delete", JsonPayload(new { id, deleted_at = Iso(now) }));
+        tx.Commit();
     }
 
     // ---------- Tasks ----------
@@ -523,7 +702,7 @@ ON CONFLICT(id) DO UPDATE SET
         var archivedPredicate = includeArchived ? "" : " AND archived_at IS NULL";
         var pagePredicate = pageId.HasValue ? " AND page_id=$page" : "";
         cmd.CommandText = $@"SELECT id, page_id, heading_id, title, notes, state, sort_order, start_at, due_at,
-recurrence, link, completed_at, archived_at, created_at, updated_at, deleted_at
+recurrence, link, priority, effort_hours, completed_at, archived_at, created_at, updated_at, deleted_at
 FROM TaskItem WHERE deleted_at IS NULL{archivedPredicate}{pagePredicate} ORDER BY sort_order";
         if (pageId.HasValue) cmd.Parameters.AddWithValue("$page", pageId.Value.ToString());
         using var r = cmd.ExecuteReader();
@@ -543,11 +722,13 @@ FROM TaskItem WHERE deleted_at IS NULL{archivedPredicate}{pagePredicate} ORDER B
                 DueAt = ParseUtcNullable(r.IsDBNull(8) ? null : r.GetValue(8)),
                 Recurrence = r.IsDBNull(9) ? null : r.GetString(9),
                 Link = r.IsDBNull(10) ? null : r.GetString(10),
-                CompletedAt = ParseUtcNullable(r.IsDBNull(11) ? null : r.GetValue(11)),
-                ArchivedAt = ParseUtcNullable(r.IsDBNull(12) ? null : r.GetValue(12)),
-                CreatedAt = ParseUtc(r.GetString(13)),
-                UpdatedAt = ParseUtc(r.GetString(14)),
-                DeletedAt = ParseUtcNullable(r.IsDBNull(15) ? null : r.GetValue(15)),
+                Priority = r.IsDBNull(11) ? null : (TaskPriority?)r.GetInt32(11),
+                EffortHours = r.IsDBNull(12) ? null : (int?)r.GetInt32(12),
+                CompletedAt = ParseUtcNullable(r.IsDBNull(13) ? null : r.GetValue(13)),
+                ArchivedAt = ParseUtcNullable(r.IsDBNull(14) ? null : r.GetValue(14)),
+                CreatedAt = ParseUtc(r.GetString(15)),
+                UpdatedAt = ParseUtc(r.GetString(16)),
+                DeletedAt = ParseUtcNullable(r.IsDBNull(17) ? null : r.GetValue(17)),
             });
         }
         LoadTagsForTasks(conn, list);
@@ -556,18 +737,45 @@ FROM TaskItem WHERE deleted_at IS NULL{archivedPredicate}{pagePredicate} ORDER B
 
     private static void LoadTagsForTasks(SqliteConnection conn, List<TaskItem> tasks)
     {
-        foreach (var task in tasks)
+        if (tasks.Count == 0) return;
+
+        var tasksById = tasks.ToDictionary(t => t.Id);
+        foreach (var chunk in tasks.Chunk(500))
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT tag.id, tag.page_id, tag.name, tag.display_name, tag.sort_order, tag.color,
+            var parameterNames = new List<string>();
+            var index = 0;
+            foreach (var task in chunk)
+            {
+                var name = "$task" + index++;
+                parameterNames.Add(name);
+                cmd.Parameters.AddWithValue(name, task.Id.ToString());
+            }
+
+            cmd.CommandText = $@"SELECT tt.task_id, tag.id, tag.page_id, tag.name, tag.display_name, tag.sort_order, tag.color,
 tag.created_at, tag.updated_at, tag.deleted_at
 FROM Tag tag
 JOIN TaskTag tt ON tt.tag_id = tag.id
-WHERE tt.task_id=$task AND tag.deleted_at IS NULL
-ORDER BY tag.display_name COLLATE NOCASE";
-            cmd.Parameters.AddWithValue("$task", task.Id.ToString());
+WHERE tt.task_id IN ({string.Join(", ", parameterNames)}) AND tag.deleted_at IS NULL
+ORDER BY tt.task_id, tag.display_name COLLATE NOCASE";
             using var r = cmd.ExecuteReader();
-            while (r.Read()) task.Tags.Add(ReadTag(r));
+            while (r.Read())
+            {
+                var taskId = Guid.Parse(r.GetString(0));
+                if (!tasksById.TryGetValue(taskId, out var task)) continue;
+                task.Tags.Add(new Tag
+                {
+                    Id = Guid.Parse(r.GetString(1)),
+                    PageId = Guid.Parse(r.GetString(2)),
+                    Name = r.GetString(3),
+                    DisplayName = r.GetString(4),
+                    SortOrder = r.GetDouble(5),
+                    Color = r.IsDBNull(6) ? null : r.GetString(6),
+                    CreatedAt = ParseUtc(r.GetString(7)),
+                    UpdatedAt = ParseUtc(r.GetString(8)),
+                    DeletedAt = ParseUtcNullable(r.IsDBNull(9) ? null : r.GetValue(9)),
+                });
+            }
         }
     }
 
@@ -577,14 +785,15 @@ ORDER BY tag.display_name COLLATE NOCASE";
         var now = _clock.UtcNow;
         if (t.PageId == Guid.Empty) t.PageId = GetDefaultPage().Id;
         if (t.CreatedAt == default) t.CreatedAt = now;
+        if (t.State == TaskState.Archived) t.ArchivedAt ??= now;
         t.UpdatedAt = now;
         using var conn = Open();
         using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = @"
-INSERT INTO TaskItem (id, page_id, heading_id, title, notes, state, sort_order, start_at, due_at, recurrence, link, completed_at, archived_at, created_at, updated_at, deleted_at)
-VALUES ($id, $page, $heading, $title, $notes, $state, $sort, $start, $due, $recurrence, $link, $completed, $archived, $created, $updated, $deleted)
+INSERT INTO TaskItem (id, page_id, heading_id, title, notes, state, sort_order, start_at, due_at, recurrence, link, priority, effort_hours, completed_at, archived_at, created_at, updated_at, deleted_at)
+VALUES ($id, $page, $heading, $title, $notes, $state, $sort, $start, $due, $recurrence, $link, $priority, $effort, $completed, $archived, $created, $updated, $deleted)
 ON CONFLICT(id) DO UPDATE SET
     page_id=excluded.page_id,
     heading_id=excluded.heading_id,
@@ -596,6 +805,8 @@ ON CONFLICT(id) DO UPDATE SET
     due_at=excluded.due_at,
     recurrence=excluded.recurrence,
     link=excluded.link,
+    priority=excluded.priority,
+    effort_hours=excluded.effort_hours,
     completed_at=excluded.completed_at,
     archived_at=excluded.archived_at,
     updated_at=excluded.updated_at,
@@ -611,6 +822,8 @@ ON CONFLICT(id) DO UPDATE SET
         cmd.Parameters.AddWithValue("$due", (object?)IsoNullable(t.DueAt) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$recurrence", (object?)t.Recurrence ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$link", (object?)t.Link ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$priority", t.Priority.HasValue ? (object)(int)t.Priority.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("$effort", t.EffortHours.HasValue ? (object)t.EffortHours.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("$completed", (object?)IsoNullable(t.CompletedAt) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$archived", (object?)IsoNullable(t.ArchivedAt) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$created", Iso(t.CreatedAt));
@@ -618,17 +831,92 @@ ON CONFLICT(id) DO UPDATE SET
         cmd.Parameters.AddWithValue("$deleted", (object?)IsoNullable(t.DeletedAt) ?? DBNull.Value);
         cmd.ExecuteNonQuery();
         ReconcileTaskTags(conn, tx, t);
+        EnqueueSyncChange(conn, tx, "task", t.Id.ToString(), t.DeletedAt is null ? "upsert" : "delete", JsonPayload(t));
         tx.Commit();
     }
 
     public void DeleteTask(Guid id)
     {
         using var conn = Open();
+        using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "UPDATE TaskItem SET deleted_at=$now, updated_at=$now WHERE id=$id";
-        cmd.Parameters.AddWithValue("$now", Iso(_clock.UtcNow));
+        var now = _clock.UtcNow;
+        cmd.Parameters.AddWithValue("$now", Iso(now));
         cmd.Parameters.AddWithValue("$id", id.ToString());
         cmd.ExecuteNonQuery();
+        EnqueueSyncChange(conn, tx, "task", id.ToString(), "delete", JsonPayload(new { id, deleted_at = Iso(now) }));
+        tx.Commit();
+    }
+
+    public int ArchiveCompletedOlderThan(TimeSpan age)
+    {
+        var now = _clock.UtcNow;
+        var cutoff = now - age;
+        using var conn = Open();
+        using var select = conn.CreateCommand();
+        select.CommandText = @"
+SELECT id, page_id, heading_id, title, notes, state, sort_order, start_at, due_at,
+recurrence, link, priority, effort_hours, completed_at, archived_at, created_at, updated_at, deleted_at
+FROM TaskItem
+WHERE deleted_at IS NULL
+  AND archived_at IS NULL
+  AND state=$done
+  AND completed_at IS NOT NULL
+  AND completed_at <= $cutoff";
+        select.Parameters.AddWithValue("$done", (int)TaskState.Done);
+        select.Parameters.AddWithValue("$cutoff", Iso(cutoff));
+        var affected = new List<TaskItem>();
+        using (var r = select.ExecuteReader())
+        {
+            while (r.Read())
+            {
+                affected.Add(new TaskItem
+                {
+                    Id = Guid.Parse(r.GetString(0)),
+                    PageId = Guid.Parse(r.GetString(1)),
+                    HeadingId = ParseGuidNullable(r.IsDBNull(2) ? null : r.GetValue(2)),
+                    Title = r.GetString(3),
+                    Notes = r.IsDBNull(4) ? null : r.GetString(4),
+                    State = TaskState.Archived,
+                    SortOrder = r.GetDouble(6),
+                    StartAt = ParseUtcNullable(r.IsDBNull(7) ? null : r.GetValue(7)),
+                    DueAt = ParseUtcNullable(r.IsDBNull(8) ? null : r.GetValue(8)),
+                    Recurrence = r.IsDBNull(9) ? null : r.GetString(9),
+                    Link = r.IsDBNull(10) ? null : r.GetString(10),
+                    Priority = r.IsDBNull(11) ? null : (TaskPriority?)r.GetInt32(11),
+                    EffortHours = r.IsDBNull(12) ? null : (int?)r.GetInt32(12),
+                    CompletedAt = ParseUtcNullable(r.IsDBNull(13) ? null : r.GetValue(13)),
+                    ArchivedAt = now,
+                    CreatedAt = ParseUtc(r.GetString(15)),
+                    UpdatedAt = now,
+                    DeletedAt = ParseUtcNullable(r.IsDBNull(17) ? null : r.GetValue(17)),
+                });
+            }
+        }
+        using var tx = conn.BeginTransaction();
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = @"
+UPDATE TaskItem
+SET state=$archived, archived_at=$now, updated_at=$now
+WHERE deleted_at IS NULL
+  AND archived_at IS NULL
+  AND state=$done
+  AND completed_at IS NOT NULL
+  AND completed_at <= $cutoff";
+        cmd.Parameters.AddWithValue("$archived", (int)TaskState.Archived);
+        cmd.Parameters.AddWithValue("$done", (int)TaskState.Done);
+        cmd.Parameters.AddWithValue("$now", Iso(now));
+        cmd.Parameters.AddWithValue("$cutoff", Iso(cutoff));
+        var count = cmd.ExecuteNonQuery();
+        foreach (var task in affected)
+        {
+            EnqueueSyncChange(conn, tx, "task", task.Id.ToString(), "upsert", JsonPayload(task));
+        }
+        tx.Commit();
+        return count;
     }
 
     // ---------- Tags ----------
@@ -669,6 +957,16 @@ GROUP BY tt.tag_id";
 
     private void ReconcileTaskTags(SqliteConnection conn, SqliteTransaction tx, TaskItem task)
     {
+        var previousTagIds = new HashSet<Guid>();
+        using (var existing = conn.CreateCommand())
+        {
+            existing.Transaction = tx;
+            existing.CommandText = "SELECT tag_id FROM TaskTag WHERE task_id=$task";
+            existing.Parameters.AddWithValue("$task", task.Id.ToString());
+            using var r = existing.ExecuteReader();
+            while (r.Read()) previousTagIds.Add(Guid.Parse(r.GetString(0)));
+        }
+
         using (var delete = conn.CreateCommand())
         {
             delete.Transaction = tx;
@@ -677,10 +975,12 @@ GROUP BY tt.tag_id";
             delete.ExecuteNonQuery();
         }
 
+        var currentTagIds = new HashSet<Guid>();
         var tagNames = TagExtractor.ExtractTags(task.Title);
         foreach (var displayName in tagNames)
         {
             var tagId = UpsertTag(conn, tx, task.PageId, displayName);
+            currentTagIds.Add(tagId);
             using var link = conn.CreateCommand();
             link.Transaction = tx;
             link.CommandText = "INSERT OR IGNORE INTO TaskTag (task_id, tag_id, created_at) VALUES ($task, $tag, $created)";
@@ -688,6 +988,22 @@ GROUP BY tt.tag_id";
             link.Parameters.AddWithValue("$tag", tagId.ToString());
             link.Parameters.AddWithValue("$created", Iso(_clock.UtcNow));
             link.ExecuteNonQuery();
+            EnqueueSyncChange(conn, tx, "task_tag", $"{task.Id}:{tagId}", "upsert", JsonPayload(new
+            {
+                task_id = task.Id,
+                tag_id = tagId,
+                created_at = Iso(_clock.UtcNow),
+            }));
+        }
+
+        foreach (var removedTagId in previousTagIds.Except(currentTagIds))
+        {
+            EnqueueSyncChange(conn, tx, "task_tag", $"{task.Id}:{removedTagId}", "delete", JsonPayload(new
+            {
+                task_id = task.Id,
+                tag_id = removedTagId,
+                deleted_at = Iso(_clock.UtcNow),
+            }));
         }
     }
 
@@ -701,7 +1017,7 @@ GROUP BY tt.tag_id";
 
     public Dictionary<Guid, (bool HasUrgentDue, bool HasNextActions)> GetPageTaskSummaries()
     {
-        var cutoff = DateTime.UtcNow.Date.AddDays(2).ToString("O");
+        var cutoff = _clock.UtcNow.Date.AddDays(2).ToString("O");
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
@@ -750,6 +1066,18 @@ VALUES ($id, $page, $name, $display, $sort, $created, $updated)";
         insert.Parameters.AddWithValue("$created", Iso(now));
         insert.Parameters.AddWithValue("$updated", Iso(now));
         insert.ExecuteNonQuery();
+        EnqueueSyncChange(conn, tx, "tag", id.ToString(), "upsert", JsonPayload(new
+        {
+            id,
+            page_id = pageId,
+            name = normalized,
+            display_name = displayName.Trim().TrimStart('@'),
+            sort_order = EntityFactory.DefaultSortOrder(now),
+            color = (string?)null,
+            created_at = Iso(now),
+            updated_at = Iso(now),
+            deleted_at = (string?)null,
+        }));
         return id;
     }
 
@@ -773,8 +1101,8 @@ VALUES ($id, $page, $name, $display, $sort, $created, $updated)";
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"SELECT id, task_id, enabled, fire_at, next_fire_at, last_fired_at, last_acknowledged_at,
-auto_snooze_enabled, auto_snooze_interval_minutes, status, created_at, updated_at
-FROM Reminder WHERE enabled=1 AND status IN (0,1,2)";
+auto_snooze_enabled, auto_snooze_interval_minutes, status, created_at, updated_at, deleted_at
+FROM Reminder WHERE enabled=1 AND status IN (0,1,2) AND deleted_at IS NULL";
         using var r = cmd.ExecuteReader();
         var list = new List<Reminder>();
         while (r.Read()) list.Add(ReadReminder(r));
@@ -786,8 +1114,8 @@ FROM Reminder WHERE enabled=1 AND status IN (0,1,2)";
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"SELECT id, task_id, enabled, fire_at, next_fire_at, last_fired_at, last_acknowledged_at,
-auto_snooze_enabled, auto_snooze_interval_minutes, status, created_at, updated_at
-FROM Reminder WHERE task_id=$task AND status IN (0,1,2) ORDER BY created_at DESC LIMIT 1";
+auto_snooze_enabled, auto_snooze_interval_minutes, status, created_at, updated_at, deleted_at
+FROM Reminder WHERE task_id=$task AND status IN (0,1,2) AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1";
         cmd.Parameters.AddWithValue("$task", taskId.ToString());
         using var r = cmd.ExecuteReader();
         return r.Read() ? ReadReminder(r) : null;
@@ -801,11 +1129,13 @@ FROM Reminder WHERE task_id=$task AND status IN (0,1,2) ORDER BY created_at DESC
         if (rem.CreatedAt == default) rem.CreatedAt = now;
         rem.UpdatedAt = now;
         using var conn = Open();
+        using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = @"
 INSERT INTO Reminder (id, task_id, enabled, fire_at, next_fire_at, last_fired_at, last_acknowledged_at,
-                     auto_snooze_enabled, auto_snooze_interval_minutes, status, created_at, updated_at)
-VALUES ($id, $task, $en, $fire, $next, $lastFired, $lastAck, $autoEn, $interval, $status, $created, $updated)
+                     auto_snooze_enabled, auto_snooze_interval_minutes, status, created_at, updated_at, deleted_at)
+VALUES ($id, $task, $en, $fire, $next, $lastFired, $lastAck, $autoEn, $interval, $status, $created, $updated, $deleted)
 ON CONFLICT(id) DO UPDATE SET
     enabled=excluded.enabled,
     fire_at=excluded.fire_at,
@@ -815,7 +1145,8 @@ ON CONFLICT(id) DO UPDATE SET
     auto_snooze_enabled=excluded.auto_snooze_enabled,
     auto_snooze_interval_minutes=excluded.auto_snooze_interval_minutes,
     status=excluded.status,
-    updated_at=excluded.updated_at;";
+    updated_at=excluded.updated_at,
+    deleted_at=excluded.deleted_at;";
         cmd.Parameters.AddWithValue("$id", rem.Id.ToString());
         cmd.Parameters.AddWithValue("$task", rem.TaskId.ToString());
         cmd.Parameters.AddWithValue("$en", rem.Enabled ? 1 : 0);
@@ -828,16 +1159,50 @@ ON CONFLICT(id) DO UPDATE SET
         cmd.Parameters.AddWithValue("$status", (int)rem.Status);
         cmd.Parameters.AddWithValue("$created", Iso(rem.CreatedAt));
         cmd.Parameters.AddWithValue("$updated", Iso(rem.UpdatedAt));
+        cmd.Parameters.AddWithValue("$deleted", (object?)IsoNullable(rem.DeletedAt) ?? DBNull.Value);
         cmd.ExecuteNonQuery();
+        EnqueueSyncChange(conn, tx, "reminder", rem.Id.ToString(), rem.DeletedAt is null ? "upsert" : "delete", JsonPayload(rem));
+        tx.Commit();
     }
 
     public void DeleteRemindersForTask(Guid taskId)
     {
         using var conn = Open();
+        using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM Reminder WHERE task_id=$task";
+        cmd.Transaction = tx;
+        var now = _clock.UtcNow;
+        var reminders = new List<Guid>();
+        using (var select = conn.CreateCommand())
+        {
+            select.Transaction = tx;
+            select.CommandText = "SELECT id FROM Reminder WHERE task_id=$task AND deleted_at IS NULL";
+            select.Parameters.AddWithValue("$task", taskId.ToString());
+            using var r = select.ExecuteReader();
+            while (r.Read()) reminders.Add(Guid.Parse(r.GetString(0)));
+        }
+
+        cmd.CommandText = @"
+UPDATE Reminder
+SET deleted_at=$now,
+    updated_at=$now,
+    enabled=0,
+    status=$disabled
+WHERE task_id=$task AND deleted_at IS NULL";
+        cmd.Parameters.AddWithValue("$now", Iso(now));
+        cmd.Parameters.AddWithValue("$disabled", (int)ReminderStatus.Disabled);
         cmd.Parameters.AddWithValue("$task", taskId.ToString());
         cmd.ExecuteNonQuery();
+        foreach (var reminderId in reminders)
+        {
+            EnqueueSyncChange(conn, tx, "reminder", reminderId.ToString(), "delete", JsonPayload(new
+            {
+                id = reminderId,
+                task_id = taskId,
+                deleted_at = Iso(now),
+            }));
+        }
+        tx.Commit();
     }
 
     private static Reminder ReadReminder(SqliteDataReader r) => new()
@@ -854,5 +1219,6 @@ ON CONFLICT(id) DO UPDATE SET
         Status = (ReminderStatus)r.GetInt32(9),
         CreatedAt = ParseUtc(r.GetString(10)),
         UpdatedAt = ParseUtc(r.GetString(11)),
+        DeletedAt = ParseUtcNullable(r.IsDBNull(12) ? null : r.GetValue(12)),
     };
 }

@@ -25,6 +25,7 @@ public partial class App : Application
     private GlobalHotkeyService? _hotkeys;
     private MainWindow? _main;
     private QuickAddWindow? _quickAdd;
+    private GlobalEntryWindow? _globalEntry;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -62,6 +63,11 @@ public partial class App : Application
             _main!.Refresh();
             UpdateTrayState();
         });
+        _globalEntry = new GlobalEntryWindow(_db, _clock, _entities, () =>
+        {
+            _main!.Refresh();
+            UpdateTrayState();
+        });
 
         WireTray();
         WireHotkeys();
@@ -95,6 +101,8 @@ public partial class App : Application
             conflicts.Add(err2!);
         if (!_hotkeys.TryRegister(HotkeyModifiers.Control | HotkeyModifiers.Alt, Key.H, () => _main!.HideToTray(), out var err3))
             conflicts.Add(err3!);
+        if (!_hotkeys.TryRegister(HotkeyModifiers.Control | HotkeyModifiers.Alt, Key.A, () => Dispatcher.BeginInvoke(() => _globalEntry!.ShowEntry()), out var err4))
+            conflicts.Add(err4!);
 
         if (conflicts.Count > 0)
         {
@@ -156,6 +164,7 @@ public partial class App : Application
         _hotkeys?.Dispose();
         _tray?.Dispose();
         _singleInstance?.Dispose();
+        _globalEntry?.Close();
         Shutdown();
     }
 
@@ -166,6 +175,7 @@ public partial class App : Application
         _hotkeys?.Dispose();
         _tray?.Dispose();
         _singleInstance?.Dispose();
+        _globalEntry?.Close();
         base.OnExit(e);
     }
 }

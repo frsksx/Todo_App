@@ -109,4 +109,57 @@ public sealed class TaskFilterTests
         Assert.Single(result);
         Assert.Equal(untagged.Id, result[0].Id);
     }
+
+    [Fact]
+    public void Apply_OnlyCompleted_IgnoresIncludeDoneCheckbox()
+    {
+        var done = TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000031"), state: TaskState.Done);
+        var active = TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000032"), state: TaskState.Action);
+        var criteria = ComposedFilterCriteria.Default(Now) with
+        {
+            StateMode = "Only Completed",
+            IncludeDone = false,
+        };
+
+        var result = TaskFilter.Apply([done, active], new Dictionary<Guid, Reminder>(), criteria).ToList();
+
+        Assert.Single(result);
+        Assert.Equal(done.Id, result[0].Id);
+    }
+
+    [Fact]
+    public void Apply_ShowAll_IncludesCompletedTasks()
+    {
+        var done = TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000041"), state: TaskState.Done);
+        var active = TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000042"), state: TaskState.Action);
+        var archived = TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000043"), state: TaskState.Archived);
+        archived.ArchivedAt = Now.AddDays(-1);
+        var criteria = ComposedFilterCriteria.Default(Now) with
+        {
+            StateMode = "Show All",
+            IncludeDone = false,
+        };
+
+        var result = TaskFilter.Apply([done, active, archived], new Dictionary<Guid, Reminder>(), criteria).ToList();
+
+        Assert.Equal([done.Id, active.Id], result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public void Apply_ArchivedMode_ReturnsOnlyArchivedTasks()
+    {
+        var archived = TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000051"), state: TaskState.Archived);
+        archived.ArchivedAt = Now.AddDays(-1);
+        var done = TestEntities.Task(id: Guid.Parse("00000000-0000-0000-0000-000000000052"), state: TaskState.Done);
+        var criteria = ComposedFilterCriteria.Default(Now) with
+        {
+            StateMode = "Archived",
+            IncludeDone = true,
+        };
+
+        var result = TaskFilter.Apply([archived, done], new Dictionary<Guid, Reminder>(), criteria).ToList();
+
+        Assert.Single(result);
+        Assert.Equal(archived.Id, result[0].Id);
+    }
 }

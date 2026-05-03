@@ -2,14 +2,21 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:WindowsTrayTasks.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Tasks"
         Width="420" Height="840"
         MinWidth="360" MinHeight="520"
         WindowStartupLocation="Manual"
         ShowInTaskbar="True"
-        Background="#FAFAFA"
+        Background="{StaticResource AppBackgroundBrush}"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="34"
+                            ResizeBorderThickness="6"
+                            GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 
@@ -19,17 +26,37 @@
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                        <Border x:Name="RowChrome"
+                                Margin="6,1"
+                                CornerRadius="8"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RowChrome" Property="Background" Value="{StaticResource AppHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="RowChrome" Property="Background" Value="{StaticResource AppSelectedBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
             <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#E3F0FF"/>
-                </Trigger>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#F0F0F0"/>
+                    <Setter Property="Background" Value="{StaticResource AppHoverBrush}"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AppSelectedBrush}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
 
-        <Style TargetType="Button" x:Key="IconButtonStyle">
+        <Style TargetType="Button" x:Key="IconButtonStyle" BasedOn="{StaticResource QuietButtonStyle}">
             <Setter Property="Padding" Value="0"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
@@ -40,10 +67,24 @@
 
         <DataTemplate DataType="{x:Type vm:TaskRowVm}">
             <Grid>
+                <!-- ── Heading row ─────────────────────────────────────────── -->
                 <Border Visibility="{Binding IsHeading, Converter={StaticResource BoolToVisibility}}"
-                        Background="#EEEEEE"
-                        Padding="7,3"
-                        Margin="0,4,0,2">
+                        Padding="8,4"
+                        Margin="2,6,2,2"
+                        CornerRadius="9">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{StaticResource AppSurfaceMutedBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource AppHoverBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource AppSelectedBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -53,7 +94,7 @@
                         <Button Grid.Column="0"
                                 Style="{StaticResource IconButtonStyle}"
                                 Width="18"
-                                Foreground="#555555"
+                                Foreground="{StaticResource AppTextMutedBrush}"
                                 Content="{Binding HeadingChevron}"
                                 CommandParameter="{Binding}"
                                 Click="HeadingCollapse_Click"
@@ -64,43 +105,46 @@
                                        FontWeight="SemiBold"
                                        FontStyle="{Binding HeadingFontStyle}"
                                        FontSize="12"
-                                       Foreground="#333333"
+                                       Foreground="{StaticResource AppTextBrush}"
                                        VerticalAlignment="Center"/>
                             <TextBox Text="{Binding EditHeadingTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      Visibility="{Binding HeadingEditorVisibility}"
                                      FontSize="12"
                                      FontWeight="SemiBold"
                                      Padding="2,0"
-                                     BorderBrush="#8DB8E8"
+                                     BorderBrush="{StaticResource AppAccentBrush}"
                                      LostFocus="HeadingTitleBox_LostFocus"
                                      KeyDown="HeadingTitleBox_KeyDown"/>
                         </Grid>
                         <TextBlock Grid.Column="2"
                                    Text="{Binding HeadingFocusText}"
                                    FontSize="11"
-                                   Foreground="#5B6F8F"
+                                   Foreground="{StaticResource AppAccentStrongBrush}"
                                    VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
 
+                <!-- ── Task row ────────────────────────────────────────────── -->
                 <Grid Visibility="{Binding IsTask, Converter={StaticResource BoolToVisibility}}"
-                      Margin="6,3">
+                      Margin="8,4">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
+                    <!-- Col0=State  Col1=Title*  Col2=Reminder  Col3=Tags  Col4=Due  Col5=Expand(fixed 20) -->
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="20"/>
                     </Grid.ColumnDefinitions>
-                    <Button Grid.Row="0"
-                            Grid.Column="0"
+
+                    <!-- State icon -->
+                    <Button Grid.Row="0" Grid.Column="0"
                             Style="{StaticResource IconButtonStyle}"
-                            Width="18"
-                            Height="18"
+                            Width="18" Height="18"
                             Margin="0,0,6,0"
                             Content="{Binding StateGlyph}"
                             FontSize="13"
@@ -113,320 +157,551 @@
                         <Button.ContextMenu>
                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                 <MenuItem Header="Action" CommandParameter="{Binding}" Tag="Action" Click="StateMenuItem_Click">
-                                    <MenuItem.Icon><TextBlock Text="○" Foreground="#3377CC" FontWeight="Bold" FontSize="12"/></MenuItem.Icon>
+                                    <MenuItem.Icon><TextBlock Text="&#x25CF;" Foreground="{StaticResource AppAccentBrush}" FontWeight="Bold" FontSize="12"/></MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="Next" CommandParameter="{Binding}" Tag="Next" Click="StateMenuItem_Click">
-                                    <MenuItem.Icon><TextBlock Text="○" Foreground="#C83C3C" FontWeight="Bold" FontSize="12"/></MenuItem.Icon>
+                                    <MenuItem.Icon><TextBlock Text="&#x25B6;" Foreground="{StaticResource AppDangerBrush}" FontWeight="Bold" FontSize="12"/></MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="On Hold" CommandParameter="{Binding}" Tag="OnHold" Click="StateMenuItem_Click">
-                                    <MenuItem.Icon><TextBlock Text="Ⅱ" Foreground="#3C78DC" FontSize="12"/></MenuItem.Icon>
+                                    <MenuItem.Icon><TextBlock Text="&#x23F8;" Foreground="{StaticResource AppAccentStrongBrush}" FontSize="12"/></MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="Waiting" CommandParameter="{Binding}" Tag="Waiting" Click="StateMenuItem_Click">
-                                    <MenuItem.Icon><TextBlock Text="⏱" Foreground="#8844AA" FontSize="12"/></MenuItem.Icon>
+                                    <MenuItem.Icon><TextBlock Text="&#x231B;" Foreground="{StaticResource AppWarningBrush}" FontSize="12"/></MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="Someday/Maybe" CommandParameter="{Binding}" Tag="Someday" Click="StateMenuItem_Click">
-                                    <MenuItem.Icon><TextBlock Text="☁" Foreground="#AAAAAA" FontSize="12"/></MenuItem.Icon>
+                                    <MenuItem.Icon><TextBlock Text="&#x2601;" Foreground="{StaticResource AppDisabledBrush}" FontSize="12"/></MenuItem.Icon>
                                 </MenuItem>
                                 <Separator/>
                                 <MenuItem Header="Done" CommandParameter="{Binding}" Tag="Done" Click="StateMenuItem_Click">
-                                    <MenuItem.Icon><TextBlock Text="✓" Foreground="#4CAF50" FontSize="12"/></MenuItem.Icon>
+                                    <MenuItem.Icon><TextBlock Text="&#x2713;" Foreground="{StaticResource AppDoneBrush}" FontSize="12"/></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Archived" CommandParameter="{Binding}" Tag="Archived" Click="StateMenuItem_Click">
+                                    <MenuItem.Icon><TextBlock Text="A" Foreground="{StaticResource AppTextMutedBrush}" FontSize="12"/></MenuItem.Icon>
                                 </MenuItem>
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
+
+                    <!-- Title (display or editor) -->
                     <Grid Grid.Row="0" Grid.Column="1">
-                        <TextBlock Text="{Binding Title}"
+                        <TextBlock Text="{Binding DisplayTitle}"
                                    Visibility="{Binding TitleTextVisibility}"
                                    FontSize="12.5"
+                                   FontWeight="{Binding TitleFontWeight}"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    TextDecorations="{Binding TitleDecorations}"
-                                   Foreground="{Binding TitleBrush}"/>
+                                   Foreground="{Binding TitleBrush}"
+                                   ToolTip="{Binding TitleToolTip}"
+                                   Cursor="Arrow"
+                                   MouseLeftButtonDown="TitleText_MouseLeftButtonDown"/>
                         <TextBox Text="{Binding EditTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  Visibility="{Binding TitleEditorVisibility}"
                                  FontSize="12.5"
                                  Padding="2,0"
-                                 BorderBrush="#8DB8E8"
+                                 BorderBrush="{StaticResource AppAccentBrush}"
                                  LostFocus="InlineTitleBox_LostFocus"
-                                 KeyDown="InlineTitleBox_KeyDown"/>
+                                 PreviewKeyDown="InlineTitleBox_PreviewKeyDown"
+                                 MouseDoubleClick="TitleTextBox_MouseDoubleClick"/>
                     </Grid>
-                    <TextBlock Grid.Row="0"
-                               Grid.Column="2"
+
+                    <!-- Reminder indicator -->
+                    <TextBlock Grid.Row="0" Grid.Column="2"
                                Text="{Binding ReminderText}"
                                FontSize="12"
                                Margin="8,0,0,0"
                                VerticalAlignment="Center"
                                Foreground="{Binding ReminderBrush}"/>
-                    <TextBlock Grid.Row="0"
-                               Grid.Column="3"
+
+                    <!-- Tags in row (left of due date) -->
+                    <TextBlock Grid.Row="0" Grid.Column="3"
+                               Text="{Binding TagsRowText}"
+                               Visibility="{Binding TagsRowVisibility}"
+                               FontSize="11"
+                               Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource AppAccentStrongBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               MaxWidth="90"/>
+
+                    <!-- Due date -->
+                    <TextBlock Grid.Row="0" Grid.Column="4"
                                Text="{Binding DueText}"
                                FontSize="12"
-                               Margin="12,0,0,0"
+                               Margin="6,0,0,0"
                                VerticalAlignment="Center"
                                Foreground="{Binding DueBrush}"
                                MouseLeftButtonDown="DueText_MouseLeftButtonDown"
                                Cursor="Hand"
                                ToolTip="Double-click to edit due date"/>
-                    <Button Grid.Row="0"
-                            Grid.Column="4"
+
+                    <!-- Expand button (fixed 20px column) -->
+                    <Button Grid.Row="0" Grid.Column="5"
                             Style="{StaticResource IconButtonStyle}"
-                            Width="18"
-                            Height="18"
-                            Margin="8,0,0,0"
+                            Width="20" Height="18"
+                            HorizontalContentAlignment="Center"
                             Content="{Binding ExpandGlyph}"
                             CommandParameter="{Binding}"
                             Click="ExpandButton_Click"
                             ToolTip="Expand notes and dates"/>
 
-                    <Border Grid.Row="1"
-                            Grid.Column="1"
-                            Grid.ColumnSpan="3"
+                    <!-- ── Expanded area: Row1, Col1-Col4 ──────────────────── -->
+                    <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4"
                             Visibility="{Binding ExpandedVisibility}"
-                            Padding="0,3,0,2">
-                        <StackPanel>
-                            <vm:MarkdownTextBlock MarkdownText="{Binding NotesText}"
-                                                  Visibility="{Binding NotesTextVisibility}"
-                                                  FontSize="12"
-                                                  Foreground="#555555"
-                                                  TextWrapping="Wrap"
-                                                  MouseLeftButtonDown="NotesText_MouseLeftButtonDown"
-                                                  ToolTip="Click to edit notes inline"/>
-                            <TextBox x:Name="NotesEditor"
-                                     Text="{Binding EditNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Visibility="{Binding NotesEditorVisibility}"
-                                     FontSize="12"
-                                     Padding="3,2"
-                                     BorderBrush="#8DB8E8"
-                                     AcceptsReturn="True"
-                                     TextWrapping="Wrap"
-                                     MinLines="2"
-                                     MaxLines="8"
-                                     KeyDown="NotesEditor_KeyDown"
-                                     LostFocus="NotesEditor_LostFocus"
-                                     ToolTip="Enter to save · Shift+Enter for newline · Esc to cancel"/>
-                            <!-- Date chips row -->
-                            <WrapPanel Margin="0,4,0,0" Orientation="Horizontal">
-                                <!-- Start date chip -->
-                                <Button x:Name="StartChip"
-                                        Content="{Binding StartChipText}"
-                                        Visibility="{Binding StartChipVisibility}"
-                                        Style="{StaticResource IconButtonStyle}"
-                                        FontSize="11" Foreground="#3377CC"
-                                        Margin="0,0,4,0"
-                                        Click="StartChip_Click"
-                                        ToolTip="Click to edit start date (e.g. tomorrow 9, +2h, 2026-05-10 09:00)"/>
-                                <Button Content="{Binding ClearStartText}"
-                                        Visibility="{Binding ClearStartVisibility}"
-                                        Style="{StaticResource IconButtonStyle}"
-                                        FontSize="10" Foreground="#999999"
-                                        Margin="0,0,8,0"
-                                        Click="ClearStart_Click"
-                                        ToolTip="Clear start date"/>
-                                <DatePicker x:Name="StartDatePicker"
-                                            SelectedDate="{Binding StartLocalDate, Mode=OneWay}"
-                                            Visibility="{Binding StartEditorVisibility}"
-                                            Width="132"
+                            Padding="10,8"
+                            Margin="0,6,0,0"
+                            Background="{StaticResource AppSurfaceRaisedBrush}"
+                            BorderBrush="{StaticResource AppBorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                        <DockPanel>
+                            <!-- Date controls docked to the right -->
+                            <StackPanel DockPanel.Dock="Right"
+                                        Width="172"
+                                        Visibility="{Binding SettingsVisibility}"
+                                        VerticalAlignment="Top"
+                                        Margin="8,0,0,0">
+                                <!-- Start date -->
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Start"
+                                               Width="54"
+                                               FontSize="10"
+                                               Foreground="{StaticResource AppTextMutedBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <DatePicker x:Name="StartDatePicker"
+                                                SelectedDate="{Binding StartLocalDate, Mode=OneWay}"
+                                                Visibility="{Binding StartEditorVisibility}"
+                                                Width="112" FontSize="10"
+                                                SelectedDateChanged="StartDatePicker_SelectedDateChanged"
+                                                KeyDown="StartDatePicker_KeyDown"
+                                                ToolTip="Select start date"/>
+                                    <Button Content="{Binding StartRightText}"
+                                            Visibility="{Binding StartChipVisibility}"
+                                            Style="{StaticResource IconButtonStyle}"
+                                            FontSize="10" Foreground="{StaticResource AppAccentBrush}"
+                                            Click="StartChip_Click"
+                                            ToolTip="Set start date"/>
+                                    <Button Content="✕"
+                                            Visibility="{Binding ClearStartVisibility}"
+                                            Style="{StaticResource IconButtonStyle}"
+                                            FontSize="10" Foreground="{StaticResource AppTextSubtleBrush}"
+                                            Margin="3,0,0,0"
+                                            Click="ClearStart_Click"
+                                            ToolTip="Clear start date"/>
+                                </StackPanel>
+                                <!-- Due date: only show prompt when unset (date itself shown in title row) -->
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="Due"
+                                               Width="54"
+                                               FontSize="10"
+                                               Foreground="{StaticResource AppTextMutedBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <DatePicker x:Name="DueDatePicker"
+                                                SelectedDate="{Binding DueLocalDate, Mode=OneWay}"
+                                                Visibility="{Binding DueEditorVisibility}"
+                                                Width="112" FontSize="10"
+                                                SelectedDateChanged="DueDatePicker_SelectedDateChanged"
+                                                KeyDown="DueDatePicker_KeyDown"
+                                                ToolTip="Select due date"/>
+                                    <Button Content="{Binding DueRightText}"
+                                            Visibility="{Binding DueExpandedChipVisibility}"
+                                            Style="{StaticResource IconButtonStyle}"
+                                            FontSize="10" Foreground="{StaticResource AppWarningBrush}"
+                                            Click="DueChip_Click"
+                                            ToolTip="Set due date"/>
+                                    <Button Content="✕"
+                                            Visibility="{Binding ClearDueExpandedVisibility}"
+                                            Style="{StaticResource IconButtonStyle}"
+                                            FontSize="10" Foreground="{StaticResource AppTextSubtleBrush}"
+                                            Margin="3,0,0,0"
+                                            Click="ClearDue_Click"
+                                            ToolTip="Clear due date"/>
+                                </StackPanel>
+                                <!-- Priority, effort, and link live in the compact right column. -->
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="Priority"
+                                               Width="54"
+                                               FontSize="10"
+                                               Foreground="{StaticResource AppTextMutedBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="PriorityCombo"
+                                              FontSize="11" Width="72" Height="22"
+                                              Margin="0,0,6,0"
+                                              SelectionChanged="PriorityCombo_SelectionChanged"
+                                              Loaded="PriorityCombo_Loaded"
+                                              ToolTip="Priority">
+                                        <ComboBoxItem Content="priority"/>
+                                        <ComboBoxItem Content="↓ Low"/>
+                                        <ComboBoxItem Content="→ Med"/>
+                                        <ComboBoxItem Content="↑ High"/>
+                                    </ComboBox>
+                                    <TextBox x:Name="EffortBox"
+                                             Text="{Binding EffortHours, Mode=OneWay, TargetNullValue=''}"
+                                             FontSize="11" Width="34" Height="22"
+                                             Padding="3,1"
+                                             ToolTip="Effort in hours (integer)"
+                                             LostFocus="EffortBox_LostFocus"
+                                             KeyDown="EffortBox_KeyDown"/>
+                                    <TextBlock Text="h" FontSize="11" Foreground="{StaticResource AppTextMutedBrush}"
+                                               VerticalAlignment="Center" Margin="3,0,0,0"
+                                               Visibility="{Binding EffortVisibility}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Link"
+                                               Width="54"
+                                               FontSize="10"
+                                               Foreground="{StaticResource AppTextMutedBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox x:Name="LinkBox"
+                                             Text="{Binding Link, Mode=OneWay, TargetNullValue=''}"
+                                             Width="112"
+                                             FontSize="11"
+                                             Padding="3,1"
+                                             ToolTip="Link URL"
+                                             LostFocus="LinkBox_LostFocus"
+                                             KeyDown="LinkBox_KeyDown"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Repeat"
+                                               Width="54"
+                                               FontSize="10"
+                                               Foreground="{StaticResource AppTextMutedBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="RecurrenceCombo"
+                                              Width="112"
+                                              Height="22"
+                                              FontSize="11"
+                                              Loaded="RecurrenceCombo_Loaded"
+                                              SelectionChanged="RecurrenceCombo_SelectionChanged"
+                                              ToolTip="Recurrence">
+                                        <ComboBoxItem Content="no repeat"/>
+                                        <ComboBoxItem Content="daily"/>
+                                        <ComboBoxItem Content="weekly"/>
+                                        <ComboBoxItem Content="biweekly"/>
+                                        <ComboBoxItem Content="monthly"/>
+                                        <ComboBoxItem Content="quarterly"/>
+                                        <ComboBoxItem Content="yearly"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <CheckBox x:Name="ReminderEnabledCheck"
+                                          Content="Remind at due"
+                                          FontSize="11"
+                                          Margin="0,8,0,0"
+                                          Loaded="ReminderEnabledCheck_Loaded"
+                                          Checked="ReminderEnabledCheck_Changed"
+                                          Unchecked="ReminderEnabledCheck_Changed"/>
+                                <CheckBox x:Name="ReminderNagCheck"
+                                          Content="Nag continuously"
+                                          FontSize="11"
+                                          Margin="0,3,0,0"
+                                          Loaded="ReminderNagCheck_Loaded"
+                                          Checked="ReminderNagCheck_Changed"
+                                          Unchecked="ReminderNagCheck_Changed"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                    <Button Content="+5m"
                                             FontSize="11"
-                                            Margin="0,0,4,0"
-                                            SelectedDateChanged="StartDatePicker_SelectedDateChanged"
-                                            KeyDown="StartDatePicker_KeyDown"
-                                            ToolTip="Select start date"/>
-                                <!-- Due date chip -->
-                                <Button x:Name="DueChip"
-                                        Content="{Binding DueChipText}"
-                                        Visibility="{Binding DueChipVisibility}"
-                                        Style="{StaticResource IconButtonStyle}"
-                                        FontSize="11" Foreground="#AA5500"
-                                        Margin="0,0,4,0"
-                                        Click="DueChip_Click"
-                                        ToolTip="Click to edit due date"/>
-                                <Button Content="{Binding ClearDueText}"
-                                        Visibility="{Binding ClearDueVisibility}"
-                                        Style="{StaticResource IconButtonStyle}"
-                                        FontSize="10" Foreground="#999999"
-                                        Margin="0,0,8,0"
-                                        Click="ClearDue_Click"
-                                        ToolTip="Clear due date"/>
-                                <DatePicker x:Name="DueDatePicker"
-                                            SelectedDate="{Binding DueLocalDate, Mode=OneWay}"
-                                            Visibility="{Binding DueEditorVisibility}"
-                                            Width="132"
+                                            Padding="5,1"
+                                            Margin="0,0,5,0"
+                                            Click="ReminderSnooze5_Click"
+                                            ToolTip="Snooze reminder 5 minutes"/>
+                                    <Button Content="Ack"
                                             FontSize="11"
-                                            Margin="0,0,4,0"
-                                            SelectedDateChanged="DueDatePicker_SelectedDateChanged"
-                                            KeyDown="DueDatePicker_KeyDown"
-                                            ToolTip="Select due date"/>
-                                <!-- Completed date (read-only) -->
-                                <TextBlock Text="{Binding CompletedChipText}"
-                                           Visibility="{Binding CompletedChipVisibility}"
-                                           FontSize="11" Foreground="#4CAF50"
-                                           Margin="0,0,8,0"/>
-                                <!-- Tags -->
-                                <TextBlock Text="{Binding TagsText}"
-                                           Visibility="{Binding TagsVisibility}"
-                                           FontSize="11" Foreground="#5577AA"
-                                           Margin="0,0,8,0"/>
-                                <TextBlock Text="{Binding RecurrenceText}"
-                                           Visibility="{Binding RecurrenceVisibility}"
-                                           FontSize="11" Foreground="#777777"
-                                           Margin="0,0,8,0"/>
-                                <Button Content="{Binding LinkText}"
-                                        Visibility="{Binding LinkVisibility}"
+                                            Padding="5,1"
+                                            Click="ReminderAck_Click"
+                                            ToolTip="Acknowledge reminder"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Notes + metadata (fills remaining space) -->
+                            <DockPanel>
+                                <Button DockPanel.Dock="Top"
+                                        Content="&#x2699;"
                                         Style="{StaticResource IconButtonStyle}"
-                                        FontSize="11"
-                                        Foreground="#3377CC"
-                                        Margin="0,0,8,0"
-                                        Click="TaskLink_Click"
-                                        ToolTip="{Binding Link}"/>
-                                <!-- Reminder detail -->
-                                <TextBlock Text="{Binding ReminderDetailText}"
-                                           Visibility="{Binding ReminderDetailVisibility}"
-                                           FontSize="11" Foreground="{Binding ReminderBrush}"/>
-                            </WrapPanel>
-                        </StackPanel>
+                                        Width="18"
+                                        Height="18"
+                                        FontSize="13"
+                                        HorizontalAlignment="Right"
+                                        Foreground="{StaticResource AppAccentBrush}"
+                                        Click="SettingsExpandButton_Click"
+                                        ToolTip="Show or hide task settings"/>
+                                <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0" Orientation="Horizontal">
+                                    <!-- Completed date (read-only) -->
+                                    <TextBlock Text="{Binding CompletedChipText}"
+                                               Visibility="{Binding CompletedChipVisibility}"
+                                               FontSize="11" Foreground="{StaticResource AppDoneBrush}"
+                                               Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding RecurrenceText}"
+                                               Visibility="{Binding RecurrenceVisibility}"
+                                               FontSize="11" Foreground="{StaticResource AppTextMutedBrush}"
+                                               Margin="0,0,8,0"/>
+                                    <TextBlock Text="{Binding ReminderDetailText}"
+                                               Visibility="{Binding ReminderDetailVisibility}"
+                                               FontSize="11" Foreground="{Binding ReminderBrush}"/>
+                                </WrapPanel>
+                                <StackPanel>
+                                    <vm:MarkdownTextBlock MarkdownText="{Binding NotesText}"
+                                                          Visibility="{Binding NotesTextVisibility}"
+                                                          FontSize="12"
+                                                          Foreground="{StaticResource AppTextBrush}"
+                                                          TextWrapping="Wrap"
+                                                          MouseLeftButtonDown="NotesText_MouseLeftButtonDown"
+                                                          ToolTip="Click to edit notes inline"/>
+                                    <TextBox x:Name="NotesEditor"
+                                             Text="{Binding EditNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             Visibility="{Binding NotesEditorVisibility}"
+                                             FontSize="12"
+                                             Padding="3,2"
+                                             BorderBrush="{StaticResource AppAccentBrush}"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             MinLines="2"
+                                             MaxLines="8"
+                                             TextChanged="NotesEditor_TextChanged"
+                                             KeyDown="NotesEditor_KeyDown"
+                                             LostFocus="NotesEditor_LostFocus"
+                                             ToolTip="Enter to save - Alt+Enter for bullet - Esc to cancel"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </DockPanel>
                     </Border>
-                    <StackPanel Grid.Row="1"
-                                Grid.Column="4"
-                                Visibility="{Binding ExpandedVisibility}"
-                                VerticalAlignment="Top"
-                                Margin="6,6,0,0">
-                        <Button Content="→ start"
-                                Style="{StaticResource IconButtonStyle}"
-                                FontSize="10"
-                                Foreground="#3377CC"
-                                Click="StartChip_Click"
-                                ToolTip="Set start date"/>
-                        <Button Content="↗ due"
-                                Style="{StaticResource IconButtonStyle}"
-                                FontSize="10"
-                                Foreground="#AA5500"
-                                Margin="0,3,0,0"
-                                Click="DueChip_Click"
-                                ToolTip="Set due date"/>
-                    </StackPanel>
                 </Grid>
             </Grid>
         </DataTemplate>
     </Window.Resources>
 
     <DockPanel>
-        <Menu x:Name="MainMenu"
-              DockPanel.Dock="Top"
-              Visibility="Collapsed"
-              Background="#F5F5F5"
-              BorderBrush="#DDDDDD"
-              BorderThickness="0,0,0,1"
-              LostKeyboardFocus="MainMenu_LostKeyboardFocus">
-            <MenuItem Header="_File">
-                <MenuItem Header="_New Task"      Click="NewTask_Click"    InputGestureText="Ctrl+N"/>
-                <MenuItem Header="New _Heading"   Click="NewHeading_Click" InputGestureText="Ctrl+H"/>
-                <MenuItem Header="New Page"       Click="AddPage_Click"/>
-                <Separator/>
-                <MenuItem Header="_Quit"          Click="Quit_Click"       InputGestureText="Alt+F4"/>
-            </MenuItem>
-            <MenuItem Header="_Edit">
-                <MenuItem Header="_Delete Task"   Click="DeleteTask_Click" InputGestureText="Delete"/>
-                <MenuItem Header="_Archive Task"  Click="ArchiveTask_Click"/>
-                <Separator/>
-                <MenuItem Header="Edit Task (details)" Click="EditTask_Click" InputGestureText="Ctrl+Enter"/>
-                <Separator/>
-                <MenuItem Header="Move Heading Up" Click="MoveHeadingUp_Click" InputGestureText="Ctrl+Shift+Up"/>
-                <MenuItem Header="Move Heading Down" Click="MoveHeadingDown_Click" InputGestureText="Ctrl+Shift+Down"/>
-            </MenuItem>
-            <MenuItem Header="_View">
-                <MenuItem x:Name="MenuShowEmptyHeadings" Header="Show _Empty Headings" IsCheckable="True" Click="MenuShowEmptyHeadings_Click"/>
-                <MenuItem x:Name="MenuShowDone"          Header="Show _Done"            IsCheckable="True" Click="MenuShowDone_Click"/>
-                <Separator/>
-                <MenuItem Header="Toggle Heading Focus"  Click="MenuToggleFocus_Click"  InputGestureText="Space"/>
-                <Separator/>
-                <MenuItem Header="_Forecast"     Click="MenuForecast_Click"/>
-                <MenuItem Header="_Inbox"        Click="MenuInbox_Click"/>
-                <MenuItem Header="_Available"    Click="MenuAvailable_Click"/>
-            </MenuItem>
-            <MenuItem Header="_Tools">
-                <MenuItem Header="_Settings…"    Click="Settings_Click"/>
-                <MenuItem Header="Backup Now"    Click="Backup_Click"/>
-                <Separator/>
-                <MenuItem Header="Pause / Resume Reminders" Click="ToggleReminders_Click"/>
-            </MenuItem>
-            <MenuItem Header="_Help">
-                <MenuItem Header="_About"        Click="About_Click"/>
-            </MenuItem>
-        </Menu>
-        <Border DockPanel.Dock="Top" Background="#F0F0F0" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1">
+        <Grid DockPanel.Dock="Top" Height="34">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="168"/>
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0"
+                    Background="{StaticResource AppSurfaceBrush}"
+                    BorderBrush="{StaticResource AppBorderSoftBrush}"
+                    BorderThickness="0,0,0,1">
+                <Grid Margin="8,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0"
+                            Width="17"
+                            Height="17"
+                            CornerRadius="6"
+                            Background="{StaticResource AppAccentBrush}"
+                            VerticalAlignment="Center"
+                            Margin="0,0,10,0">
+                        <TextBlock Text="&#x2713;"
+                                   Foreground="White"
+                                   FontSize="12"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <Grid x:Name="HeaderTabsHost"
+                          Grid.Column="1"
+                          VerticalAlignment="Center"
+                          SizeChanged="HeaderTabsHost_SizeChanged">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="PageTabsScrollLeftButton"
+                                Grid.Column="0"
+                                Content="&lt;"
+                                Width="18"
+                                Height="24"
+                                Visibility="Collapsed"
+                                Padding="0"
+                                Margin="0,0,3,0"
+                                Background="Transparent"
+                                Foreground="{StaticResource AppTextMutedBrush}"
+                                BorderThickness="0"
+                                Click="PageTabsScrollLeft_Click"
+                                ToolTip="Scroll tabs left"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                        <Border Grid.Column="1"
+                                ClipToBounds="True"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="New Page" Click="AddPage_Click"/>
+                                </ContextMenu>
+                            </Border.ContextMenu>
+                            <ScrollViewer x:Name="PageTabsScroll"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          CanContentScroll="False"
+                                          ScrollChanged="PageTabsScroll_ScrollChanged"
+                                          shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                                <StackPanel x:Name="PageTabs"
+                                            Orientation="Horizontal"
+                                            AllowDrop="True"
+                                            SizeChanged="PageTabs_SizeChanged"
+                                            PreviewDragOver="PageTab_DragOver"
+                                            PreviewDragLeave="PageTab_DragLeave"
+                                            PreviewDrop="PageTab_Drop"
+                                            shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                            </ScrollViewer>
+                        </Border>
+                        <Button x:Name="PageTabsScrollRightButton"
+                                Grid.Column="2"
+                                Content="&gt;"
+                                Width="18"
+                                Height="24"
+                                Visibility="Collapsed"
+                                Padding="0"
+                                Margin="3,0,0,0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="PageTabsScrollRight_Click"
+                                ToolTip="Scroll tabs right"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                    </Grid>
+                </Grid>
+            </Border>
+            <Border Grid.Column="1"
+                    Background="{StaticResource AppSurfaceBrush}"
+                    BorderBrush="{StaticResource AppBorderSoftBrush}"
+                    BorderThickness="0,0,0,1"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Content="-"
+                            Width="46"
+                            Height="34"
+                            FontSize="16"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Foreground="{StaticResource AppTextMutedBrush}"
+                            Click="TitleBarMinimize_Click"
+                            ToolTip="Minimize"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                    <Button Content="□"
+                            Width="46"
+                            Height="34"
+                            FontSize="12"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Foreground="{StaticResource AppTextMutedBrush}"
+                            Click="TitleBarMaximize_Click"
+                            ToolTip="Maximize or restore"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                    <Button Content="X"
+                            Width="46"
+                            Height="34"
+                            FontSize="13"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Foreground="{StaticResource AppTextMutedBrush}"
+                            Click="TitleBarClose_Click"
+                            ToolTip="Close"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+        <Border x:Name="SearchBar"
+                DockPanel.Dock="Top"
+                Visibility="Collapsed"
+                Background="{StaticResource AppSurfaceBrush}"
+                BorderBrush="{StaticResource AppBorderSoftBrush}"
+                BorderThickness="0,0,0,1">
             <Grid Margin="8,4">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <CheckBox x:Name="ShowEmptyHeadingsCheck"
-                          Grid.Column="0"
-                          Content="Show Empty Headings"
-                          VerticalAlignment="Center"
-                          Margin="0,0,10,0"
-                          Checked="ShowEmptyHeadingsCheck_Changed"
-                          Unchecked="ShowEmptyHeadingsCheck_Changed"/>
                 <TextBox x:Name="SearchBox"
-                         Grid.Column="1"
+                         Grid.Column="0"
                          Padding="6,3"
                          FontSize="13"
-                         BorderBrush="#CCCCCC"
+                         BorderBrush="{StaticResource AppAccentBrush}"
                          TextChanged="SearchBox_TextChanged"
                          KeyDown="SearchBox_KeyDown"
                          ToolTip="Search (Ctrl+F or /)"/>
-                <CheckBox x:Name="ShowDoneCheck"
-                          Grid.Column="2"
-                          Content="+ Done"
-                          VerticalAlignment="Center"
-                          Margin="8,0,8,0"
-                          Checked="ShowDoneCheck_Changed"
-                          Unchecked="ShowDoneCheck_Changed"/>
-                <ComboBox x:Name="FilterCombo"
-                          Grid.Column="3"
-                          Width="140"
-                          SelectionChanged="FilterCombo_SelectionChanged"
-                          ToolTip="Filter and perspectives"/>
             </Grid>
         </Border>
-        <Border DockPanel.Dock="Top" Background="#F8F8F8" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1">
-            <Border.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Header="New Page" Click="AddPage_Click"/>
-                </ContextMenu>
-            </Border.ContextMenu>
-            <StackPanel x:Name="PageTabs"
-                        Orientation="Horizontal"
-                        Margin="8,4"
-                        AllowDrop="True"
-                        PreviewDragOver="PageTab_DragOver"
-                        PreviewDragLeave="PageTab_DragLeave"
-                        PreviewDrop="PageTab_Drop"/>
-        </Border>
-        <Border DockPanel.Dock="Bottom" Background="#F8F8F8" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0">
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource AppSurfaceBrush}" BorderBrush="{StaticResource AppBorderSoftBrush}" BorderThickness="0,1,0,0">
             <Grid>
-                <WrapPanel x:Name="TagBar" Margin="6,3">
-                    <WrapPanel.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="New Tag…" Click="NewTagMenuItem_Click"/>
-                        </ContextMenu>
-                    </WrapPanel.ContextMenu>
-                </WrapPanel>
-                <Button HorizontalAlignment="Right"
-                        VerticalAlignment="Bottom"
-                        Margin="4"
-                        Padding="4,2"
-                        FontSize="11"
-                        Content="⟳ Sync"
-                        Click="SyncButton_Click"
-                        ToolTip="Sync (not yet implemented)"
-                        Background="Transparent"
-                        BorderThickness="1"
-                        BorderBrush="#CCCCCC"/>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <!-- Undo notification bar (shown after deletion) -->
+                <StackPanel x:Name="UndoBar"
+                            Grid.Row="0"
+                            Orientation="Horizontal"
+                            Margin="6,3,6,0"
+                            Visibility="Collapsed">
+                    <TextBlock x:Name="UndoMessage"
+                               FontSize="11"
+                               Foreground="{StaticResource AppTextBrush}"
+                               VerticalAlignment="Center"/>
+                    <Button x:Name="UndoButton"
+                            Content="Undo"
+                            FontSize="11"
+                            Padding="6,1"
+                            Margin="8,0,0,0"
+                            Background="Transparent"
+                            BorderThickness="1"
+                            BorderBrush="{StaticResource AppBorderBrush}"
+                            Foreground="{StaticResource AppAccentBrush}"
+                            Click="UndoButton_Click"/>
+                </StackPanel>
+                <!-- Status bar: settings, tags, combined filter/perspective, sync -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0"
+                            Content="&#x2699;"
+                            Width="26"
+                            Height="26"
+                            Margin="6,0,2,0"
+                            Padding="0"
+                            FontSize="15"
+                            Click="Settings_Click"
+                            ToolTip="Settings"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Foreground="{StaticResource AppTextMutedBrush}"/>
+                    <WrapPanel x:Name="TagBar" Grid.Column="1" Margin="3,3">
+                        <WrapPanel.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="New Tag..." Click="NewTagMenuItem_Click"/>
+                            </ContextMenu>
+                        </WrapPanel.ContextMenu>
+                    </WrapPanel>
+                    <ComboBox x:Name="FilterCombo"
+                              Grid.Column="2"
+                              Width="126"
+                              Margin="4,0,2,0"
+                              VerticalAlignment="Center"
+                              SelectionChanged="FilterCombo_SelectionChanged"
+                              ToolTip="Filter and perspectives"/>
+                    <Button Grid.Column="3"
+                            VerticalAlignment="Center"
+                            Margin="2,0,6,0"
+                            Padding="0"
+                            Width="26" Height="26"
+                            FontSize="16"
+                            Content="↻"
+                            Click="SyncButton_Click"
+                            ToolTip="Sync status"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Foreground="{StaticResource AppTextSubtleBrush}"
+                            Cursor="Hand"/>
+                </Grid>
             </Grid>
         </Border>
         <ListBox x:Name="TaskList"
+                 SelectionMode="Extended"
                  BorderThickness="0"
                  Background="Transparent"
                  FocusVisualStyle="{x:Null}"
@@ -435,7 +710,9 @@
                  VirtualizingStackPanel.IsVirtualizing="True"
                  VirtualizingStackPanel.VirtualizationMode="Recycling"
                  AllowDrop="True"
+                 PreviewKeyDown="TaskList_PreviewKeyDown"
                  KeyDown="TaskList_KeyDown"
+                 SelectionChanged="TaskList_SelectionChanged"
                  MouseDoubleClick="TaskList_MouseDoubleClick"
                  PreviewMouseLeftButtonDown="TaskList_PreviewMouseLeftButtonDown"
                  PreviewMouseRightButtonDown="TaskList_PreviewMouseRightButtonDown"

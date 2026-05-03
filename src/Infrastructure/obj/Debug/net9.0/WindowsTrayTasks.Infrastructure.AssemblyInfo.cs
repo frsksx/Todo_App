@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("WindowsTrayTasks.Infrastructure")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+262880f8b6080ea3f1a7be00515ebb912a41af4b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fda85a028124e3bf0a884e63435796760fa6a044")]
 [assembly: System.Reflection.AssemblyProductAttribute("WindowsTrayTasks.Infrastructure")]
 [assembly: System.Reflection.AssemblyTitleAttribute("WindowsTrayTasks.Infrastructure")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

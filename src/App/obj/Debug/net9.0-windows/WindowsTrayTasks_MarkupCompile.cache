@@ -10,11 +10,11 @@ none
 false
 TRACE;DEBUG;NET;NET9_0;NETCOREAPP
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\App\App.xaml
-4-944219224
+7526136720
 
-106201713
+12-1160696730
 2161315636964
-Views\MainWindow.xaml;Views\QuickAddWindow.xaml;Views\SimplePromptWindow.xaml;Views\TaskEditorWindow.xaml;
+Resources\Theme.xaml;Views\GlobalEntryWindow.xaml;Views\MainWindow.xaml;Views\QuickAddWindow.xaml;Views\SettingsDialog.xaml;Views\SimplePromptWindow.xaml;Views\TaskEditorWindow.xaml;
 
 False
 

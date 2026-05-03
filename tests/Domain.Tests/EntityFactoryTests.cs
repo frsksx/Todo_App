@@ -17,6 +17,7 @@ public sealed class EntityFactoryTests
         Assert.Equal(clock.UtcNow, task.CreatedAt);
         Assert.Equal(clock.UtcNow, task.UpdatedAt);
         Assert.Equal(TaskState.Next, task.State);
+        Assert.Equal(TaskPriority.Medium, task.Priority);
     }
 
     [Fact]

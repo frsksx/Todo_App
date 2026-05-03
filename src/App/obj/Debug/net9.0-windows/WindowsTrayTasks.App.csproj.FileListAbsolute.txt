@@ -122,3 +122,13 @@ C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-bu
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.runtimeconfig.json
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.dll
 C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\.artifacts\app-build-check\WindowsTrayTasks.pdb
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\App\obj\Debug\net9.0-windows\Views\GlobalEntryWindow.baml
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\App\obj\Debug\net9.0-windows\Views\GlobalEntryWindow.g.cs
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\App\obj\Debug\net9.0-windows\Views\SettingsDialog.baml
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\App\obj\Debug\net9.0-windows\Views\SettingsDialog.g.cs
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.exe
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.deps.json
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.runtimeconfig.json
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.dll
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\artifacts\verify-app\WindowsTrayTasks.pdb
+C:\Users\frsks\OneDrive\Desktop\Repositories\Todo-App\Todo_App\src\App\obj\Debug\net9.0-windows\Resources\Theme.baml

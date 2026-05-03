@@ -4,7 +4,12 @@
       "Bash(dotnet build *)",
       "Bash(dotnet test *)",
       "Bash(grep -E \"\\\\.\\(xaml|cs\\)$\")",
-      "Bash(grep \"\\\\.cs$\")"
+      "Bash(grep \"\\\\.cs$\")",
+      "Bash(tasklist /FI \"IMAGENAME eq WindowsTrayTasks.exe\")",
+      "Bash(taskkill /PID 21628 /F)",
+      "PowerShell(Stop-Process -Id 21628 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Name \"WindowsTrayTasks\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force -ErrorAction SilentlyContinue)"
     ]
   }
 }

@@ -43,6 +43,7 @@ public sealed class EntityFactory
             HeadingId = headingId,
             Title = title,
             State = state,
+            Priority = TaskPriority.Medium,
             SortOrder = sortOrder ?? DefaultSortOrder(now),
             CreatedAt = now,
             UpdatedAt = now,

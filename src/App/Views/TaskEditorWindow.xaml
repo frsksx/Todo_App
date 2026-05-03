@@ -4,11 +4,12 @@
         Title="Task"
         Width="540" Height="540"
         WindowStartupLocation="CenterOwner"
-        Background="#FAFAFA"
+        Background="{StaticResource AppBackgroundBrush}"
         ShowInTaskbar="False"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True">
-    <Grid Margin="14">
+    <Border Style="{StaticResource AppCardStyle}" Margin="12">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -21,7 +22,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="Title" FontSize="11" Foreground="#666666"/>
+        <TextBlock Grid.Row="0" Text="Title" Style="{StaticResource AppLabelTextStyle}"/>
         <TextBox x:Name="TitleBox" Grid.Row="1" Padding="6,4" Margin="0,2,0,10" FontSize="14"/>
 
         <Grid Grid.Row="2" Margin="0,0,0,10">
@@ -30,11 +31,11 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                <TextBlock Text="Heading" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="Heading" Style="{StaticResource AppLabelTextStyle}"/>
                 <ComboBox x:Name="HeadingCombo" Margin="0,2,0,0" IsEditable="False" DisplayMemberPath="Title"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="6,0,0,0">
-                <TextBlock Text="State" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="State" Style="{StaticResource AppLabelTextStyle}"/>
                 <ComboBox x:Name="StateCombo" Margin="0,2,0,0"/>
             </StackPanel>
         </Grid>
@@ -45,7 +46,7 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                <TextBlock Text="Start (yyyy-MM-dd HH:mm or blank)" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="Start (yyyy-MM-dd HH:mm or blank)" Style="{StaticResource AppLabelTextStyle}"/>
                 <Grid Margin="0,2,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -61,7 +62,7 @@
                 </Grid>
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="6,0,0,0">
-                <TextBlock Text="Due (yyyy-MM-dd HH:mm or blank)" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="Due (yyyy-MM-dd HH:mm or blank)" Style="{StaticResource AppLabelTextStyle}"/>
                 <Grid Margin="0,2,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -84,36 +85,36 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                <TextBlock Text="Recurrence" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="Recurrence" Style="{StaticResource AppLabelTextStyle}"/>
                 <TextBox x:Name="RecurrenceBox" Padding="6,4" Margin="0,2,0,0"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="6,0,0,0">
-                <TextBlock Text="Link" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="Link" Style="{StaticResource AppLabelTextStyle}"/>
                 <TextBox x:Name="LinkBox" Padding="6,4" Margin="0,2,0,0"/>
             </StackPanel>
         </Grid>
 
-        <Border Grid.Row="5" BorderBrush="#DDDDDD" BorderThickness="0,1,0,0" Padding="0,8,0,0" Margin="0,0,0,8">
+        <Border Grid.Row="5" BorderBrush="{StaticResource AppBorderSoftBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,0" Margin="0,0,0,8">
             <StackPanel>
-                <TextBlock Text="Reminder" FontSize="12" FontWeight="SemiBold" Foreground="#444444"/>
+                <TextBlock Text="Reminder" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AppTextBrush}"/>
                 <Grid Margin="0,6,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Reminder time (yyyy-MM-dd HH:mm or +Nm/+Nh shorthand)" FontSize="11" Foreground="#666666"/>
+                        <TextBlock Text="Reminder time (yyyy-MM-dd HH:mm or +Nm/+Nh shorthand)" Style="{StaticResource AppLabelTextStyle}"/>
                         <TextBox x:Name="ReminderBox" Padding="6,4" Margin="0,2,0,0"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                        <TextBlock Text="Auto-snooze" FontSize="11" Foreground="#666666"/>
+                        <TextBlock Text="Auto-snooze" Style="{StaticResource AppLabelTextStyle}"/>
                         <ComboBox x:Name="AutoSnoozeCombo" Margin="0,2,0,0" Width="120"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="6" Text="Notes" FontSize="11" Foreground="#666666" Margin="0,4,0,0"/>
+        <TextBlock Grid.Row="6" Text="Notes" Style="{StaticResource AppLabelTextStyle}" Margin="0,4,0,0"/>
         <TextBox x:Name="NotesBox"
                  Grid.Row="7"
                  Margin="0,2,0,8"
@@ -128,9 +129,10 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="HintText" Grid.Column="0" Foreground="#888888" FontSize="11" VerticalAlignment="Center"/>
+            <TextBlock x:Name="HintText" Grid.Column="0" Style="{StaticResource AppHintTextStyle}" VerticalAlignment="Center"/>
             <Button Grid.Column="1" Content="Cancel" Width="84" Margin="0,0,8,0" Click="Cancel_Click" IsCancel="True"/>
-            <Button Grid.Column="2" Content="Save" Width="84" Click="Save_Click" IsDefault="True"/>
+            <Button Grid.Column="2" Content="Save" Width="84" Style="{StaticResource PrimaryButtonStyle}" Click="Save_Click" IsDefault="True"/>
         </Grid>
     </Grid>
+    </Border>
 </Window>

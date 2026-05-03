@@ -24,7 +24,7 @@ public static class StateMigrator
             LegacyTaskState.Scheduled => new(TaskState.Next, PreserveAsArchived: false),
             LegacyTaskState.Someday => new(TaskState.Someday, PreserveAsArchived: false),
             LegacyTaskState.Done => new(TaskState.Done, PreserveAsArchived: false),
-            LegacyTaskState.Archived => new(TaskState.Done, PreserveAsArchived: true),
+            LegacyTaskState.Archived => new(TaskState.Archived, PreserveAsArchived: true),
             _ => new(TaskState.Action, PreserveAsArchived: false),
         };
 }

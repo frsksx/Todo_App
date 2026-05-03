@@ -37,7 +37,7 @@ public sealed record ComposedFilterCriteria(
         => new(pageId, "All", false, DateFilterBucket.All, string.Empty, new HashSet<string>(StringComparer.OrdinalIgnoreCase), false, null, nowUtc);
 }
 
-public enum PerspectiveKind { Normal, Forecast, Inbox, Available, Waiting, Someday, Completed, Review }
+public enum PerspectiveKind { Normal, Forecast, Inbox, Available, Waiting, Someday, Completed, Archived, Review }
 
 public sealed record Perspective(string Name, PerspectiveKind Kind, ComposedFilterCriteria? Criteria = null)
 {
@@ -55,6 +55,7 @@ public sealed record Perspective(string Name, PerspectiveKind Kind, ComposedFilt
             new("Waiting",   PerspectiveKind.Waiting,   new(null, "Only Waiting For", false, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
             new("Someday",   PerspectiveKind.Someday,   new(null, "Only Someday/Maybe", false, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
             new("Completed", PerspectiveKind.Completed, new(null, "Only Completed", true, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
+            new("Archived",  PerspectiveKind.Archived,  new(null, "Archived", true, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
             new("Review",    PerspectiveKind.Review,    new(null, "Show All", false, DateFilterBucket.All, "", emptyTags, false, null, epoch)),
         ];
     }
@@ -121,21 +122,21 @@ public static class TaskFilter
             "Waiting" => filtered.Where(t => t.State == TaskState.Waiting),
             "Someday" => filtered.Where(t => t.State == TaskState.Someday),
             "Done" => filtered.Where(t => t.State == TaskState.Done),
+            "Archived" => filtered.Where(t => t.State == TaskState.Archived || t.ArchivedAt is not null),
             "Only Next" => filtered.Where(t => t.State == TaskState.Next),
             "Actions + Next" => filtered.Where(t => t.State is TaskState.Action or TaskState.Next),
-            "All except Done" => filtered.Where(t => t.State != TaskState.Done),
-            "Show All" => filtered,
+            "All except Done" => filtered.Where(t => t.State is not (TaskState.Done or TaskState.Archived)),
+            "Show All" => filtered.Where(t => t.State != TaskState.Archived && t.ArchivedAt is null),
             "Only On Hold" => filtered.Where(t => t.State == TaskState.OnHold),
             "Only Waiting For" => filtered.Where(t => t.State == TaskState.Waiting),
             "Only Someday/Maybe" => filtered.Where(t => t.State == TaskState.Someday),
             "Only Completed" => filtered.Where(t => t.State == TaskState.Done),
-            "Archived" => filtered.Where(t => t.ArchivedAt is not null),
             _ => filtered,
         };
 
-        if (!criteria.IncludeDone && criteria.StateMode is not "Done" and not "Archived")
+        if (!criteria.IncludeDone && !StateModeIncludesDone(criteria.StateMode))
         {
-            filtered = filtered.Where(t => t.State != TaskState.Done);
+            filtered = filtered.Where(t => t.State is not (TaskState.Done or TaskState.Archived));
         }
 
         filtered = criteria.DateBucket switch
@@ -192,6 +193,9 @@ public static class TaskFilter
 
     private static bool HasReminderDate(TaskItem task, IReadOnlyDictionary<Guid, Reminder> reminders)
         => reminders.TryGetValue(task.Id, out var rem) && rem.NextFireAt.HasValue;
+
+    private static bool StateModeIncludesDone(string stateMode)
+        => stateMode is "Done" or "Only Completed" or "Show All" or "Archived";
 
     private static bool IsInLocalRange(DateTime? utc, DateTime startLocalInclusive, DateTime endLocalExclusive)
     {

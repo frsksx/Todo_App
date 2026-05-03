@@ -4,11 +4,14 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shell;
+using System.Windows.Threading;
 using WindowsTrayTasks.Domain;
 using WindowsTrayTasks.Infrastructure.Persistence;
 using WindowsTrayTasks.Reminders;
@@ -29,6 +32,7 @@ public sealed class TaskRowVm
     public bool IsFocusedHeading { get; init; }
     public bool IsNewHeading { get; init; }
     public bool IsEditingHeading { get; init; }
+    public Guid? PageId { get; init; }
     public string EditHeadingTitle { get; set; } = "";
     public string HeadingChevron => IsNewHeading || HeadingId is null ? "" : HeadingCollapsed ? "▶" : "▾";
     public string HeadingDisplay => HeadingTitle;
@@ -47,13 +51,14 @@ public sealed class TaskRowVm
     public string StateLabel => State.ToString();
     public string StateGlyph => State switch
     {
-        TaskState.Action => "○",
-        TaskState.Next => "○",
-        TaskState.OnHold => "Ⅱ",
-        TaskState.Waiting => "⏱",
-        TaskState.Someday => "☁",
-        TaskState.Done => "✓",
-        _ => "○",
+        TaskState.Action => "\u25CF",
+        TaskState.Next => "\u25B6",
+        TaskState.OnHold => "\u23F8",
+        TaskState.Waiting => "\u231B",
+        TaskState.Someday => "\u2601",
+        TaskState.Done => "\u2713",
+        TaskState.Archived => "A",
+        _ => "\u25CF",
     };
 
     public DateTime? StartAt { get; init; }
@@ -64,14 +69,20 @@ public sealed class TaskRowVm
     public string? Notes { get; init; }
     public DateTime? ReminderNextFireAt { get; init; }
     public int? ReminderAutoSnoozeMinutes { get; init; }
+    public bool ReminderAutoSnoozeEnabled { get; init; }
     public IReadOnlyList<Tag> Tags { get; init; } = [];
+    public TaskPriority? Priority { get; init; }
+    public int? EffortHours { get; init; }
     public bool ReminderActive { get; init; }
     public bool ReminderOverdue { get; init; }
     public bool IsExpanded { get; init; }
+    public bool IsSettingsExpanded { get; init; }
     public bool IsEditingNotes { get; init; }
     public string EditNotes { get; set; } = "";
     public string ExpandGlyph => IsExpanded ? "▾" : "›";
+    public string SettingsGlyph => "\u2699";
     public Visibility ExpandedVisibility => IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility SettingsVisibility => IsSettingsExpanded ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NotesTextVisibility => IsEditingNotes ? Visibility.Collapsed : Visibility.Visible;
     public Visibility NotesEditorVisibility => IsEditingNotes ? Visibility.Visible : Visibility.Collapsed;
 
@@ -92,8 +103,8 @@ public sealed class TaskRowVm
     public Visibility DueEditorVisibility => IsEditingDue ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ClearStartVisibility => StartAt.HasValue && !IsEditingStart ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ClearDueVisibility => DueAt.HasValue && !IsEditingDue ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility CompletedChipVisibility => CompletedAt.HasValue ? Visibility.Visible : Visibility.Collapsed;
-    public string CompletedChipText => CompletedAt.HasValue ? $"done: {ToLocal(CompletedAt.Value)}" : "";
+    public Visibility CompletedChipVisibility => Visibility.Collapsed;
+    public string CompletedChipText => "";
 
     public string DueText
     {
@@ -102,8 +113,8 @@ public sealed class TaskRowVm
             if (DueAt is null) return "";
             var dueDate = DueAt.Value.ToLocalTime().Date;
             var days = (dueDate - DateTime.Today).Days;
-            if (days < 0) return $"{-days}d overdue";
-            if (days == 0) return "due today";
+            if (days < 0) return $"{-days}d ago";
+            if (days == 0) return "Today";
             if (days <= 14) return $"in {days}d";
             return DueAt.Value.ToLocalTime().ToString("yyyy-MM-dd");
         }
@@ -115,12 +126,55 @@ public sealed class TaskRowVm
     public Visibility LinkVisibility => string.IsNullOrWhiteSpace(Link) ? Visibility.Collapsed : Visibility.Visible;
     public string TagsText => Tags.Count > 0 ? string.Join("  ", Tags.Select(t => "@" + t.DisplayName)) : "";
     public Visibility TagsVisibility => Tags.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public string TagsRowText => Tags.Count > 0 ? string.Join(" ", Tags.Select(t => "@" + t.DisplayName)) : "";
+    public Visibility TagsRowVisibility => Tags.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public string PriorityLabel => Priority switch
+    {
+        TaskPriority.Low => "↓ Low",
+        TaskPriority.Medium => "→ Med",
+        TaskPriority.High => "↑ High",
+        _ => "priority",
+    };
+    public Brush PriorityBrush => Priority switch
+    {
+        TaskPriority.High => new SolidColorBrush(Color.FromRgb(0xC8, 0x4A, 0x3D)),
+        TaskPriority.Medium => new SolidColorBrush(Color.FromRgb(0xB9, 0x60, 0x26)),
+        _ => new SolidColorBrush(Color.FromRgb(0x2F, 0x7D, 0x8C)),
+    };
+    public string EffortLabel => EffortHours.HasValue ? $"{EffortHours}h" : "effort";
+    public Visibility EffortVisibility => EffortHours.HasValue ? Visibility.Visible : Visibility.Collapsed;
+    public bool HasLink => !string.IsNullOrWhiteSpace(Link);
+
+    private static readonly Regex _tagStripPattern =
+        new(@"\s*@[\p{L}\p{N}_][\p{L}\p{N}_\-.]*", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    public string DisplayTitle
+    {
+        get
+        {
+            if (!Title.Contains('@')) return Title;
+            var stripped = _tagStripPattern.Replace(Title, " ");
+            return Regex.Replace(stripped, @"\s+", " ").Trim();
+        }
+    }
+
+    public FontWeight TitleFontWeight => IsExpanded ? FontWeights.Bold : FontWeights.Normal;
+
+    public string StartRightText => StartAt.HasValue ? $"→ {ToLocal(StartAt.Value)}" : "→ start";
+    public string DueRightText => DueAt.HasValue ? $"↗ {DueText}" : "↗ due";
+    // In the expanded section, hide due date display (shown in title row) and its clear button.
+    // Only show the "↗ due" prompt to allow setting when no date is set.
+    public Visibility DueExpandedChipVisibility => DueAt.HasValue || IsEditingDue
+        ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility ClearDueExpandedVisibility => Visibility.Collapsed;
     public string ReminderDetailText
     {
         get
         {
             if (!ReminderActive || ReminderNextFireAt is null) return "";
-            var repeat = ReminderAutoSnoozeMinutes is { } m ? $" · repeats every {m}m" : "";
+            var repeat = ReminderAutoSnoozeEnabled && ReminderAutoSnoozeMinutes is { } m ? $" · nags every {m}m" : "";
             return ReminderOverdue
                 ? $"⏰ overdue · {ToLocal(ReminderNextFireAt.Value)}{repeat}"
                 : $"⏰ {ToLocal(ReminderNextFireAt.Value)}{repeat}";
@@ -134,27 +188,51 @@ public sealed class TaskRowVm
         {
             if (!ReminderActive || ReminderNextFireAt is null) return "";
             var local = ToLocal(ReminderNextFireAt.Value);
-            var repeat = ReminderAutoSnoozeMinutes is { } m ? $" · every {m}m" : "";
+            var repeat = ReminderAutoSnoozeEnabled && ReminderAutoSnoozeMinutes is { } m ? $" · every {m}m" : "";
             return ReminderOverdue ? $"⏰ overdue · {local}{repeat}" : $"⏰ {local}";
         }
     }
 
-    public Brush TitleBrush => State == TaskState.Done
-        ? new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99))
-        : new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22));
+    public Brush TitleBrush => State is TaskState.Done or TaskState.Someday or TaskState.Archived
+        ? new SolidColorBrush(Color.FromRgb(0x92, 0x98, 0x9C))
+        : new SolidColorBrush(Color.FromRgb(0x24, 0x2B, 0x2E));
 
-    public System.Windows.TextDecorationCollection? TitleDecorations =>
-        State == TaskState.Done ? System.Windows.TextDecorations.Strikethrough : null;
+    public string? TitleToolTip => HasLink ? $"Ctrl+click to open {Link}" : null;
+
+    public System.Windows.TextDecorationCollection? TitleDecorations
+    {
+        get
+        {
+            if (State != TaskState.Done && !HasLink) return null;
+
+            var decorations = new System.Windows.TextDecorationCollection();
+            if (State == TaskState.Done)
+            {
+                decorations.Add(new System.Windows.TextDecoration
+                {
+                    Location = System.Windows.TextDecorationLocation.Strikethrough,
+                });
+            }
+            if (HasLink)
+            {
+                decorations.Add(new System.Windows.TextDecoration
+                {
+                    Location = System.Windows.TextDecorationLocation.Underline,
+                });
+            }
+            return decorations;
+        }
+    }
 
     public Brush DueBrush
     {
         get
         {
-            if (DueAt is null) return new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77));
+            if (DueAt is null) return new SolidColorBrush(Color.FromRgb(0x6C, 0x73, 0x78));
             var days = (DueAt.Value.ToLocalTime().Date - DateTime.Today).Days;
             return days < 7
-                ? new SolidColorBrush(Color.FromRgb(0xC8, 0x3C, 0x3C))
-                : new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77));
+                ? new SolidColorBrush(Color.FromRgb(0xC8, 0x4A, 0x3D))
+                : new SolidColorBrush(Color.FromRgb(0x6C, 0x73, 0x78));
         }
     }
 
@@ -165,21 +243,23 @@ public sealed class TaskRowVm
         HeadingId is null ? FontStyles.Italic : FontStyles.Normal;
 
     public Brush ReminderBrush => ReminderOverdue
-        ? new SolidColorBrush(Color.FromRgb(0xC8, 0x3C, 0x3C))
-        : new SolidColorBrush(Color.FromRgb(0x55, 0x77, 0xBB));
+        ? new SolidColorBrush(Color.FromRgb(0xC8, 0x4A, 0x3D))
+        : new SolidColorBrush(Color.FromRgb(0x2F, 0x7D, 0x8C));
 
     public Brush StateBrush => State switch
     {
-        TaskState.Action => new SolidColorBrush(Color.FromRgb(0x33, 0x77, 0xCC)),
-        TaskState.Next => new SolidColorBrush(Color.FromRgb(0xC8, 0x3C, 0x3C)),
-        TaskState.OnHold => new SolidColorBrush(Color.FromRgb(0x3C, 0x78, 0xDC)),
-        TaskState.Waiting => new SolidColorBrush(Color.FromRgb(0x88, 0x44, 0xAA)),
-        TaskState.Someday => new SolidColorBrush(Color.FromRgb(0xAA, 0xAA, 0xAA)),
-        TaskState.Done => new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50)),
+        TaskState.Action => new SolidColorBrush(Color.FromRgb(0x2F, 0x7D, 0x8C)),
+        TaskState.Next => new SolidColorBrush(Color.FromRgb(0xC8, 0x4A, 0x3D)),
+        TaskState.OnHold => new SolidColorBrush(Color.FromRgb(0x4E, 0x78, 0xB8)),
+        TaskState.Waiting => new SolidColorBrush(Color.FromRgb(0xB9, 0x60, 0x26)),
+        TaskState.Someday => new SolidColorBrush(Color.FromRgb(0xB7, 0xB9, 0xB7)),
+        TaskState.Done => new SolidColorBrush(Color.FromRgb(0x4D, 0x9B, 0x64)),
+        TaskState.Archived => new SolidColorBrush(Color.FromRgb(0x6C, 0x73, 0x78)),
         _ => Brushes.Gray,
     };
 
-    public string RowKey => IsNewHeading ? "h:new" : IsHeading ? $"h:{HeadingId?.ToString() ?? "none"}" : $"t:{TaskId}";
+    public string? RowKeyOverride { get; init; }
+    public string RowKey => RowKeyOverride ?? (IsNewHeading ? "h:new" : IsHeading ? $"h:{HeadingId?.ToString() ?? "none"}" : $"t:{TaskId}");
 
     private static string ToLocal(DateTime utc)
     {
@@ -198,7 +278,7 @@ public sealed class TaskRowVm
 public sealed class InsertionLineAdorner : Adorner
 {
     private readonly bool _after;
-    private readonly Pen _pen = new(new SolidColorBrush(Color.FromRgb(0x2B, 0x78, 0xE4)), 2);
+    private readonly Pen _pen = new(new SolidColorBrush(Color.FromRgb(0x2F, 0x7D, 0x8C)), 2);
 
     public InsertionLineAdorner(UIElement adornedElement, bool after)
         : base(adornedElement)
@@ -227,6 +307,7 @@ public partial class MainWindow : Window
     private readonly Action _quickAdd;
 
     private readonly HashSet<Guid> _expandedTaskIds = new();
+    private readonly HashSet<Guid> _settingsExpandedTaskIds = new();
     private List<TaskRowVm> _rows = new();
     private List<DomainPage> _pages = new();
     private List<TaskItem> _taskSnapshot = new();
@@ -235,15 +316,18 @@ public partial class MainWindow : Window
     private string _filterMode = "All";
     private DateFilterBucket _dateBucket = DateFilterBucket.All;
     private string _searchText = "";
-    private bool _showEmptyHeadings;
+    private bool _showEmptyHeadings = true;
     private bool _includeDone;
     private bool _untaggedOnly;
     private bool _inboxOnly;
     private bool _forecastMode;
+    private bool _agendaMode;
+    private bool _showAgendaTab;
     private readonly HashSet<string> _selectedTags = new(StringComparer.OrdinalIgnoreCase);
     private Guid? _focusedHeadingId;
     private Guid? _editingTaskId;
     private Guid? _editingNotesTaskId;
+    private readonly Dictionary<Guid, string> _notesDrafts = new();
     private Guid? _editingStartAtTaskId;
     private Guid? _editingDueAtTaskId;
     private Guid? _creatingTaskId;
@@ -262,9 +346,18 @@ public partial class MainWindow : Window
     private readonly Dictionary<Guid, DateTime> _recentlyCompletedAt = new();
     private Guid? _renamingPageId;
     private bool _creatingNewTag;
+    private bool _suppressSelectionCollapse;
     private Guid _pageHoverTargetId;
     private DateTime _pageHoverStartedAtUtc;
     private Point _tagDragStart;
+
+    private sealed record UndoRecord(
+        List<TaskItem> DeletedTasks,
+        List<Heading> DeletedHeadings,
+        List<(Guid TaskId, Guid? OriginalHeadingId)> OrphanedTasks);
+
+    private UndoRecord? _pendingUndo;
+    private DispatcherTimer? _undoTimer;
 
     private sealed record DragPayload(string Kind, Guid Id, string TagName = "")
     {
@@ -330,7 +423,15 @@ public partial class MainWindow : Window
         FilterCombo.ItemsSource = filterItems;
         FilterCombo.SelectedIndex = 0;
 
-        Loaded += (_, _) => { Refresh(); SearchBox.Focus(); };
+        _showAgendaTab = _db.GetSetting("show_agenda_tab") == "1";
+
+        Loaded += (_, _) =>
+        {
+            HideSearchBar(clear: true);
+            Refresh();
+            TaskList.Focus();
+            Dispatcher.BeginInvoke(UpdateTabScrollButtons, DispatcherPriority.ContextIdle);
+        };
         Closing += OnClosing;
         PreviewKeyDown += OnPreviewKeyDown;
         PreviewKeyUp += OnPreviewKeyUp;
@@ -359,7 +460,7 @@ public partial class MainWindow : Window
     {
         Show();
         Activate();
-        SearchBox.Focus();
+        TaskList.Focus();
         Refresh();
     }
 
@@ -390,7 +491,17 @@ public partial class MainWindow : Window
     public void Refresh()
     {
         var selectedKey = Selected?.RowKey;
+        _db.ArchiveCompletedOlderThan(TimeSpan.FromDays(7));
         RefreshPages();
+        var reminders = _db.GetActiveReminders().ToDictionary(r => r.TaskId, r => r);
+        var now = _clock.UtcNow;
+
+        if (_agendaMode)
+        {
+            RefreshAgenda(reminders, now, selectedKey);
+            return;
+        }
+
         _taskSnapshot = _db.GetTasks(includeArchived: true, pageId: _activePageId);
         _headingSnapshot = _db.GetHeadings(_activePageId).OrderBy(h => h.SortOrder).ThenBy(h => h.Title).ToList();
         var tasks = (_filterMode == "Archived"
@@ -398,8 +509,6 @@ public partial class MainWindow : Window
                 : _taskSnapshot.Where(t => t.ArchivedAt is null))
             .ToList();
         var headings = _headingSnapshot;
-        var reminders = _db.GetActiveReminders().ToDictionary(r => r.TaskId, r => r);
-        var now = _clock.UtcNow;
 
         var filtered = ApplyCurrentFilters(tasks, reminders, now).ToList();
         if (_creatingTaskId is { } newTaskId && !_forecastMode)
@@ -418,14 +527,67 @@ public partial class MainWindow : Window
         }
 
         _rows = BuildRows(headings, filtered, reminders, now);
-        TaskList.ItemsSource = _rows;
-        RenderTagBar(tasks);
-
-        if (selectedKey is not null)
+        var selectedRow = selectedKey is null ? null : _rows.FirstOrDefault(r => r.RowKey == selectedKey);
+        if (CollapseExpandedTasksExcept(selectedRow is { IsTask: true } ? selectedRow.TaskId : null))
         {
-            TaskList.SelectedItem = _rows.FirstOrDefault(r => r.RowKey == selectedKey);
+            _rows = BuildRows(headings, filtered, reminders, now);
+            selectedRow = selectedKey is null ? null : _rows.FirstOrDefault(r => r.RowKey == selectedKey);
         }
 
+        _suppressSelectionCollapse = true;
+        try
+        {
+            TaskList.ItemsSource = _rows;
+            TaskList.SelectedItem = selectedRow;
+        }
+        finally
+        {
+            _suppressSelectionCollapse = false;
+        }
+        RenderTagBar(tasks);
+
+    }
+
+    private void RefreshAgenda(Dictionary<Guid, Reminder> reminders, DateTime now, string? selectedKey)
+    {
+        _taskSnapshot = _db.GetTasks(includeArchived: _filterMode == "Archived");
+        _headingSnapshot = _db.GetHeadings().OrderBy(h => h.PageId).ThenBy(h => h.SortOrder).ThenBy(h => h.Title).ToList();
+
+        var tasks = (_filterMode == "Archived"
+                ? _taskSnapshot
+                : _taskSnapshot.Where(t => t.ArchivedAt is null))
+            .ToList();
+
+        var filtered = TaskFilter.Apply(tasks, reminders, new ComposedFilterCriteria(
+            PageId: null,
+            StateMode: _filterMode,
+            IncludeDone: _includeDone,
+            DateBucket: _dateBucket,
+            SearchText: _searchText,
+            TagNames: _selectedTags,
+            UntaggedOnly: _untaggedOnly,
+            FocusedHeadingId: null,
+            NowUtc: now)).ToList();
+
+        _rows = BuildAgendaRows(filtered, reminders, now);
+        var selectedRow = selectedKey is null ? null : _rows.FirstOrDefault(r => r.RowKey == selectedKey);
+        if (CollapseExpandedTasksExcept(selectedRow is { IsTask: true } ? selectedRow.TaskId : null))
+        {
+            _rows = BuildAgendaRows(filtered, reminders, now);
+            selectedRow = selectedKey is null ? null : _rows.FirstOrDefault(r => r.RowKey == selectedKey);
+        }
+
+        _suppressSelectionCollapse = true;
+        try
+        {
+            TaskList.ItemsSource = _rows;
+            TaskList.SelectedItem = selectedRow;
+        }
+        finally
+        {
+            _suppressSelectionCollapse = false;
+        }
+        RenderAgendaTagBar(tasks);
     }
 
     private void RefreshPages()
@@ -439,6 +601,25 @@ public partial class MainWindow : Window
         var summaries = _db.GetPageTaskSummaries();
 
         PageTabs.Children.Clear();
+        if (_showAgendaTab)
+        {
+            var isActive = _agendaMode;
+            var agendaTab = new Button
+            {
+                Content = new TextBlock { Text = "Agenda", VerticalAlignment = VerticalAlignment.Center, FontStyle = FontStyles.Italic },
+                Padding = new Thickness(10, 3, 10, 3),
+                Margin = new Thickness(0, 0, 4, 0),
+                FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal,
+                BorderThickness = new Thickness(1),
+                BorderBrush = isActive ? ThemeBrush("AppAccentSoftBrush") : Brushes.Transparent,
+                Background = isActive ? ThemeBrush("AppSelectedBrush") : Brushes.Transparent,
+                Foreground = isActive ? ThemeBrush("AppAccentStrongBrush") : ThemeBrush("AppTextMutedBrush"),
+            };
+            WindowChrome.SetIsHitTestVisibleInChrome(agendaTab, true);
+            agendaTab.Click += (_, _) => SetAgendaMode();
+            PageTabs.Children.Add(agendaTab);
+        }
+
         foreach (var page in _pages)
         {
             var isRenaming = _renamingPageId == page.Id;
@@ -451,9 +632,10 @@ public partial class MainWindow : Window
                     DataContext = page,
                     FontSize = 12,
                     MinWidth = 60,
-                    Padding = new Thickness(2, 0, 2, 0),
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x8D, 0xB8, 0xE8)),
+                    Padding = new Thickness(6, 1, 6, 1),
+                    BorderBrush = ThemeBrush("AppAccentBrush"),
                 };
+                WindowChrome.SetIsHitTestVisibleInChrome(editor, true);
                 editor.KeyDown += PageNameEditor_KeyDown;
                 editor.LostFocus += PageNameEditor_LostFocus;
                 tabContent = editor;
@@ -461,30 +643,33 @@ public partial class MainWindow : Window
             }
             else
             {
+                var isActive = !_agendaMode && page.Id == _activePageId;
                 summaries.TryGetValue(page.Id, out var s);
                 tabContent = new TextBlock
                 {
                     Text = page.Name,
                     VerticalAlignment = VerticalAlignment.Center,
                     Foreground = s.HasUrgentDue
-                        ? new SolidColorBrush(Color.FromRgb(0xA0, 0x20, 0x20))
-                        : Brushes.Black,
+                        ? ThemeBrush("AppDangerBrush")
+                        : isActive ? ThemeBrush("AppAccentStrongBrush") : ThemeBrush("AppTextBrush"),
                     FontStyle = !s.HasNextActions ? FontStyles.Italic : FontStyles.Normal,
                 };
             }
 
+            var active = !_agendaMode && page.Id == _activePageId;
             var button = new Button
             {
                 Content = tabContent,
                 DataContext = page,
-                Padding = new Thickness(8, 2, 8, 2),
+                Padding = new Thickness(10, 3, 10, 3),
                 Margin = new Thickness(0, 0, 4, 0),
-                FontWeight = page.Id == _activePageId ? FontWeights.SemiBold : FontWeights.Normal,
-                BorderThickness = page.Id == _activePageId ? new Thickness(0, 0, 0, 2) : new Thickness(0),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x4A, 0x86, 0xE8)),
-                Background = Brushes.Transparent,
+                FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal,
+                BorderThickness = new Thickness(1),
+                BorderBrush = active ? ThemeBrush("AppAccentSoftBrush") : Brushes.Transparent,
+                Background = active ? ThemeBrush("AppSelectedBrush") : Brushes.Transparent,
                 AllowDrop = true,
             };
+            WindowChrome.SetIsHitTestVisibleInChrome(button, true);
             button.Click += PageTab_Click;
             button.MouseDoubleClick += PageTab_DoubleClick;
             button.PreviewDragOver += PageTab_DragOver;
@@ -493,7 +678,11 @@ public partial class MainWindow : Window
             button.ContextMenu = BuildPageContextMenu(page);
             PageTabs.Children.Add(button);
         }
+
+        Dispatcher.BeginInvoke(UpdateTabScrollButtons, DispatcherPriority.ContextIdle);
     }
+
+    private Brush ThemeBrush(string key) => (Brush)FindResource(key);
 
     private ContextMenu BuildPageContextMenu(DomainPage page)
     {
@@ -571,7 +760,7 @@ public partial class MainWindow : Window
             headingTasks ??= new List<TaskItem>();
             if (headingTasks.Count == 0 && !_showEmptyHeadings) continue;
 
-            rows.Add(CreateHeadingRow(heading.Id, heading.Title, headingTasks.Count, heading.Collapsed));
+                rows.Add(CreateHeadingRow(heading.Id, heading.Title, headingTasks.Count, heading.Collapsed, pageId: _activePageId));
             if (!heading.Collapsed)
             {
                 rows.AddRange(headingTasks.Select(t => CreateTaskRow(t, heading.Title, reminders, now)));
@@ -580,7 +769,7 @@ public partial class MainWindow : Window
 
         if (_creatingHeading && !_focusedHeadingId.HasValue && !_forecastMode)
         {
-            rows.Add(CreateHeadingRow(null, "", 0, collapsed: false, isNew: true, isEditing: true));
+            rows.Add(CreateHeadingRow(null, "", 0, collapsed: false, isNew: true, isEditing: true, pageId: _activePageId));
         }
 
         var noHeadingTasks = tasksByHeading.TryGetValue(HeadingKey(null), out var looseTasks)
@@ -589,8 +778,60 @@ public partial class MainWindow : Window
         if (noHeadingTasks.Count > 0
             && (!_focusedHeadingId.HasValue || _focusedHeadingId.Value == Guid.Empty))
         {
-            rows.Add(CreateHeadingRow(null, "Inbox", noHeadingTasks.Count, collapsed: false));
+            rows.Add(CreateHeadingRow(null, "Inbox", noHeadingTasks.Count, collapsed: false, pageId: _activePageId));
             rows.AddRange(noHeadingTasks.Select(t => CreateTaskRow(t, "Inbox", reminders, now)));
+        }
+
+        return rows;
+    }
+
+    private List<TaskRowVm> BuildAgendaRows(
+        IReadOnlyList<TaskItem> tasks,
+        IReadOnlyDictionary<Guid, Reminder> reminders,
+        DateTime now)
+    {
+        var rows = new List<TaskRowVm>();
+        var tasksByPage = tasks
+            .GroupBy(t => t.PageId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(t => t.SortOrder).ThenBy(t => t.Title).ToList());
+        var headingsByPage = _headingSnapshot
+            .GroupBy(h => h.PageId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(h => h.SortOrder).ThenBy(h => h.Title).ToList());
+
+        foreach (var page in _pages)
+        {
+            tasksByPage.TryGetValue(page.Id, out var pageTasks);
+            pageTasks ??= new List<TaskItem>();
+            headingsByPage.TryGetValue(page.Id, out var pageHeadings);
+            pageHeadings ??= new List<Heading>();
+
+            var tasksByHeading = pageTasks
+                .GroupBy(t => HeadingKey(t.HeadingId))
+                .ToDictionary(g => g.Key, g => g.OrderBy(t => t.SortOrder).ThenBy(t => t.Title).ToList());
+
+            foreach (var heading in pageHeadings)
+            {
+                tasksByHeading.TryGetValue(HeadingKey(heading.Id), out var headingTasks);
+                headingTasks ??= new List<TaskItem>();
+                if (headingTasks.Count == 0 && !_showEmptyHeadings) continue;
+
+                var headingTitle = $"{heading.Title} [{page.Name}]";
+                rows.Add(CreateHeadingRow(heading.Id, headingTitle, headingTasks.Count, heading.Collapsed, pageId: page.Id));
+                if (!heading.Collapsed)
+                {
+                    rows.AddRange(headingTasks.Select(t => CreateTaskRow(t, headingTitle, reminders, now)));
+                }
+            }
+
+            var inboxTasks = tasksByHeading.TryGetValue(HeadingKey(null), out var looseTasks)
+                ? looseTasks
+                : new List<TaskItem>();
+            if (inboxTasks.Count > 0)
+            {
+                var inboxTitle = $"Inbox [{page.Name}]";
+                rows.Add(CreateHeadingRow(null, inboxTitle, inboxTasks.Count, collapsed: false, pageId: page.Id, rowKeyOverride: $"h:inbox:{page.Id}"));
+                rows.AddRange(inboxTasks.Select(t => CreateTaskRow(t, inboxTitle, reminders, now)));
+            }
         }
 
         return rows;
@@ -647,11 +888,12 @@ public partial class MainWindow : Window
         return rows;
     }
 
-    private TaskRowVm CreateHeadingRow(Guid? headingId, string title, int count, bool collapsed, bool isNew = false, bool isEditing = false)
+    private TaskRowVm CreateHeadingRow(Guid? headingId, string title, int count, bool collapsed, bool isNew = false, bool isEditing = false, Guid? pageId = null, string? rowKeyOverride = null)
         => new()
         {
             IsHeading = true,
             HeadingId = headingId,
+            PageId = pageId,
             HeadingTitle = title,
             HeadingCount = count,
             HeadingCollapsed = collapsed,
@@ -659,6 +901,7 @@ public partial class MainWindow : Window
             IsNewHeading = isNew,
             IsEditingHeading = isEditing,
             EditHeadingTitle = isNew ? _pendingHeadingTitle : title,
+            RowKeyOverride = rowKeyOverride,
         };
 
     private TaskRowVm CreateTaskRow(TaskItem task, string headingTitle, IReadOnlyDictionary<Guid, Reminder> reminders, DateTime now)
@@ -668,6 +911,7 @@ public partial class MainWindow : Window
         {
             IsHeading = false,
             HeadingId = task.HeadingId,
+            PageId = task.PageId,
             HeadingTitle = headingTitle,
             TaskId = task.Id,
             Title = task.Title,
@@ -682,13 +926,19 @@ public partial class MainWindow : Window
             CompletedAt = task.CompletedAt,
             Notes = task.Notes,
             Tags = task.Tags,
+            Priority = task.Priority,
+            EffortHours = task.EffortHours,
             ReminderActive = rem is not null,
             ReminderNextFireAt = rem?.NextFireAt,
             ReminderAutoSnoozeMinutes = rem?.AutoSnoozeIntervalMinutes,
+            ReminderAutoSnoozeEnabled = rem?.AutoSnoozeEnabled == true,
             ReminderOverdue = rem?.NextFireAt is { } next && next <= now,
             IsExpanded = _expandedTaskIds.Contains(task.Id),
+            IsSettingsExpanded = _settingsExpandedTaskIds.Contains(task.Id),
             IsEditingNotes = _editingNotesTaskId == task.Id,
-            EditNotes = task.Notes ?? "",
+            EditNotes = _editingNotesTaskId == task.Id && _notesDrafts.TryGetValue(task.Id, out var draft)
+                ? draft
+                : task.Notes ?? "",
             IsEditingStart = _editingStartAtTaskId == task.Id,
             EditStart = task.StartAt.HasValue ? ToDateInputLocal(task.StartAt.Value) : "",
             IsEditingDue = _editingDueAtTaskId == task.Id,
@@ -711,8 +961,7 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape)
         {
-            if (string.IsNullOrEmpty(SearchBox.Text)) { Hide(); }
-            else { SearchBox.Clear(); }
+            HideSearchBar(clear: true);
             e.Handled = true;
         }
         else if (e.Key == Key.Down)
@@ -736,6 +985,7 @@ public partial class MainWindow : Window
         else
         {
             _filterMode = selected;
+            _includeDone = selected is "Show All" or "Only Completed" or "Archived";
             _forecastMode = false;
             _inboxOnly = false;
             Refresh();
@@ -744,26 +994,25 @@ public partial class MainWindow : Window
 
     private void SetPerspective(Perspective p)
     {
+        _agendaMode = false;
         _forecastMode = p.Kind == PerspectiveKind.Forecast;
         _inboxOnly = p.Kind == PerspectiveKind.Inbox;
         if (p.Criteria is { } c)
         {
             _filterMode = c.StateMode;
             _includeDone = c.IncludeDone;
-            ShowDoneCheck.IsChecked = _includeDone;
         }
         Refresh();
     }
 
     private void ShowEmptyHeadingsCheck_Changed(object sender, RoutedEventArgs e)
     {
-        _showEmptyHeadings = ShowEmptyHeadingsCheck.IsChecked == true;
+        _showEmptyHeadings = true;
         Refresh();
     }
 
     private void ShowDoneCheck_Changed(object sender, RoutedEventArgs e)
     {
-        _includeDone = ShowDoneCheck.IsChecked == true;
         Refresh();
     }
 
@@ -784,19 +1033,31 @@ public partial class MainWindow : Window
         Application.Current.Shutdown();
     }
 
-    private void DeleteTask_Click(object sender, RoutedEventArgs e)
+    private void TitleBarMinimize_Click(object sender, RoutedEventArgs e)
     {
-        if (Selected is not { IsTask: true } sel) return;
-        _db.DeleteTask(sel.TaskId);
-        _db.DeleteRemindersForTask(sel.TaskId);
-        Refresh();
+        WindowState = WindowState.Minimized;
     }
+
+    private void TitleBarMaximize_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+    }
+
+    private void TitleBarClose_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void DeleteTask_Click(object sender, RoutedEventArgs e) => ExecuteDeleteSelected();
 
     private void ArchiveTask_Click(object sender, RoutedEventArgs e)
     {
         if (Selected is not { IsTask: true } sel) return;
         var task = FindTask(sel.TaskId);
         if (task is null) return;
+        task.State = TaskState.Archived;
         task.ArchivedAt = _clock.UtcNow;
         _db.SaveTask(task);
         Refresh();
@@ -820,46 +1081,25 @@ public partial class MainWindow : Window
             MoveHeading(sel.HeadingId, 1);
     }
 
-    private void MenuShowEmptyHeadings_Click(object sender, RoutedEventArgs e)
-    {
-        _showEmptyHeadings = MenuShowEmptyHeadings.IsChecked;
-        ShowEmptyHeadingsCheck.IsChecked = _showEmptyHeadings;
-        Refresh();
-    }
-
-    private void MenuShowDone_Click(object sender, RoutedEventArgs e)
-    {
-        _includeDone = MenuShowDone.IsChecked;
-        ShowDoneCheck.IsChecked = _includeDone;
-        Refresh();
-    }
-
-    private void MenuToggleFocus_Click(object sender, RoutedEventArgs e)
-    {
-        if (Selected is { } sel)
-            ToggleHeadingFocus(sel.IsHeading ? sel.HeadingId : null);
-    }
-
-    private void MenuForecast_Click(object sender, RoutedEventArgs e)
-    {
-        var p = Perspective.BuiltIns.First(x => x.Kind == PerspectiveKind.Forecast);
-        FilterCombo.SelectedItem = p.Name;
-    }
-
-    private void MenuInbox_Click(object sender, RoutedEventArgs e)
-    {
-        var p = Perspective.BuiltIns.First(x => x.Kind == PerspectiveKind.Inbox);
-        FilterCombo.SelectedItem = p.Name;
-    }
-
-    private void MenuAvailable_Click(object sender, RoutedEventArgs e)
-    {
-        var p = Perspective.BuiltIns.First(x => x.Kind == PerspectiveKind.Available);
-        FilterCombo.SelectedItem = p.Name;
-    }
-
     private void Settings_Click(object sender, RoutedEventArgs e)
-        => MessageBox.Show(this, "Settings dialog not yet implemented.", "Tasks");
+    {
+        var dlg = new SettingsDialog(
+            _showAgendaTab,
+            _db.GetSetting("sync_enabled") == "1",
+            _db.GetSetting("supabase_url"),
+            _db.GetSetting("supabase_publishable_key"))
+        { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            _showAgendaTab = dlg.ShowAgendaTab;
+            _db.SaveSetting("show_agenda_tab", _showAgendaTab ? "1" : "0");
+            _db.SaveSetting("sync_enabled", dlg.SyncEnabled ? "1" : "0");
+            _db.SaveSetting("supabase_url", string.IsNullOrWhiteSpace(dlg.SupabaseUrl) ? null : dlg.SupabaseUrl.Trim());
+            _db.SaveSetting("supabase_publishable_key", string.IsNullOrWhiteSpace(dlg.SupabasePublishableKey) ? null : dlg.SupabasePublishableKey.Trim());
+            if (!_showAgendaTab && _agendaMode) { _agendaMode = false; }
+            Refresh();
+        }
+    }
 
     private void Backup_Click(object sender, RoutedEventArgs e)
         => MessageBox.Show(this, "Backup not yet implemented.", "Tasks");
@@ -905,20 +1145,59 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RenderAgendaTagBar(IReadOnlyList<TaskItem> tasks)
+    {
+        TagBar.Children.Clear();
+
+        var tagTasks = (_filterMode == "Archived"
+                ? tasks.Where(t => t.ArchivedAt is not null || t.State == TaskState.Archived)
+                : tasks.Where(t => t.ArchivedAt is null && t.State != TaskState.Archived))
+            .ToList();
+        var untaggedCount = tagTasks.Count(t => t.Tags.Count == 0);
+        TagBar.Children.Add(CreateTagButton("Untagged", $"Untagged ({untaggedCount})", _untaggedOnly));
+        TagBar.Children.Add(CreateTagButton("All", "All", !_untaggedOnly && _selectedTags.Count == 0));
+
+        var tags = tagTasks
+            .SelectMany(t => t.Tags)
+            .GroupBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new { Name = g.Key, DisplayName = g.First().DisplayName, Count = g.Count() })
+            .OrderBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tag in tags)
+        {
+            TagBar.Children.Add(CreateTagButton(tag.Name, $"@{tag.DisplayName} ({tag.Count})", _selectedTags.Contains(tag.Name)));
+        }
+    }
+
     private Button CreateTagButton(string key, string text, bool selected, string? dragTagDisplayName = null)
     {
+        var border = new Border
+        {
+            CornerRadius = new CornerRadius(12),
+            Background = selected
+                ? ThemeBrush("AppAccentBrush")
+                : ThemeBrush("AppAccentHoverBrush"),
+            BorderBrush = selected ? ThemeBrush("AppAccentStrongBrush") : ThemeBrush("AppAccentSoftBrush"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 2, 8, 2),
+            Child = new TextBlock
+            {
+                Text = text,
+                FontSize = 11,
+                Foreground = selected
+                    ? Brushes.White
+                    : ThemeBrush("AppAccentStrongBrush"),
+            },
+        };
         var button = new Button
         {
-            Content = text,
+            Content = border,
             DataContext = key,
-            Padding = new Thickness(4, 1, 4, 1),
-            Margin = new Thickness(0, 0, 6, 2),
-            FontSize = 11,
-            Background = selected ? new SolidColorBrush(Color.FromRgb(0xE3, 0xF0, 0xFF)) : Brushes.Transparent,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, 0, 5, 2),
+            Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            Foreground = selected
-                ? new SolidColorBrush(Color.FromRgb(0x22, 0x55, 0xAA))
-                : new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
+            Cursor = System.Windows.Input.Cursors.Hand,
         };
         button.Click += TagButton_Click;
         if (dragTagDisplayName is not null)
@@ -1019,6 +1298,66 @@ public partial class MainWindow : Window
         SetActivePage(page);
     }
 
+    private void PageTabsScrollLeft_Click(object sender, RoutedEventArgs e)
+    {
+        PageTabsScroll.ScrollToHorizontalOffset(Math.Max(0, PageTabsScroll.HorizontalOffset - 120));
+        UpdateTabScrollButtons();
+        e.Handled = true;
+    }
+
+    private void PageTabsScrollRight_Click(object sender, RoutedEventArgs e)
+    {
+        PageTabsScroll.ScrollToHorizontalOffset(PageTabsScroll.HorizontalOffset + 120);
+        UpdateTabScrollButtons();
+        e.Handled = true;
+    }
+
+    private void HeaderTabsHost_SizeChanged(object sender, SizeChangedEventArgs e)
+        => UpdateTabScrollButtons();
+
+    private void PageTabs_SizeChanged(object sender, SizeChangedEventArgs e)
+        => UpdateTabScrollButtons();
+
+    private void PageTabsScroll_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        => UpdateTabScrollButtons();
+
+    private void UpdateTabScrollButtons()
+    {
+        if (!IsLoaded) return;
+
+        var available = HeaderTabsHost.ActualWidth;
+        var contentWidth = PageTabs.ActualWidth;
+        if (available <= 0 || contentWidth <= 0) return;
+
+        var buttonSpace = PageTabsScrollLeftButton.ActualWidth
+                          + PageTabsScrollRightButton.ActualWidth
+                          + PageTabsScrollLeftButton.Margin.Left
+                          + PageTabsScrollLeftButton.Margin.Right
+                          + PageTabsScrollRightButton.Margin.Left
+                          + PageTabsScrollRightButton.Margin.Right;
+        if (buttonSpace <= 0) buttonSpace = 42;
+
+        var allTabsFit = contentWidth <= available + 0.5;
+        PageTabsScrollLeftButton.Visibility = allTabsFit ? Visibility.Collapsed : Visibility.Visible;
+        PageTabsScrollRightButton.Visibility = allTabsFit ? Visibility.Collapsed : Visibility.Visible;
+
+        PageTabsScroll.Width = allTabsFit
+            ? contentWidth
+            : Math.Max(40, available - buttonSpace);
+
+        if (allTabsFit)
+        {
+            PageTabsScroll.ScrollToHorizontalOffset(0);
+            PageTabsScrollLeftButton.IsEnabled = false;
+            PageTabsScrollRightButton.IsEnabled = false;
+            return;
+        }
+
+        PageTabsScrollLeftButton.IsEnabled = PageTabsScroll.HorizontalOffset > 0.5;
+        PageTabsScrollRightButton.IsEnabled =
+            PageTabsScroll.HorizontalOffset < PageTabsScroll.ScrollableWidth - 0.5;
+    }
+
     private void PageTab_DragOver(object sender, DragEventArgs e)
     {
         if (!TryGetPageDropTarget(sender, e, out var page)
@@ -1112,6 +1451,7 @@ public partial class MainWindow : Window
     private void SwitchPageDuringDrag(DomainPage page)
     {
         SaveCurrentPageViewState();
+        _agendaMode = false;
         _activePageId = page.Id;
         RestorePageViewState(page);
         Refresh();
@@ -1128,7 +1468,7 @@ public partial class MainWindow : Window
         {
             MoveTaskToPage(payload.Id, page.Id);
         }
-        else if (payload.Kind == "heading")
+        else if (payload.Kind == "heading" && !_agendaMode)
         {
             MoveHeadingToPage(payload.Id, page.Id);
         }
@@ -1143,12 +1483,33 @@ public partial class MainWindow : Window
 
     private void SetActivePage(DomainPage page)
     {
+        _agendaMode = false;
         SaveCurrentPageViewState();
         _activePageId = page.Id;
         _db.SaveActivePageId(_activePageId);
         _selectedTags.Clear();
         _untaggedOnly = false;
         RestorePageViewState(page);
+        Refresh();
+    }
+
+    private void SetAgendaMode()
+    {
+        SaveCurrentPageViewState();
+        _agendaMode = true;
+        _forecastMode = false;
+        _inboxOnly = false;
+        _focusedHeadingId = null;
+        _filterMode = "Show All";
+        _dateBucket = DateFilterBucket.All;
+        _includeDone = true;
+        _selectedTags.Clear();
+        _untaggedOnly = false;
+
+        FilterCombo.SelectionChanged -= FilterCombo_SelectionChanged;
+        FilterCombo.SelectedItem = _filterMode;
+        FilterCombo.SelectionChanged += FilterCombo_SelectionChanged;
+
         Refresh();
     }
 
@@ -1224,49 +1585,54 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Show menu only when Alt itself is pressed (not Alt+Tab, Alt+F4, etc.)
-        if (e.Key == Key.System && (e.SystemKey == Key.LeftAlt || e.SystemKey == Key.RightAlt))
-        {
-            MainMenu.Visibility = Visibility.Visible;
-        }
-
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
         if (IsInlineEditorFocused()) return;
         var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
 
         if (e.Key == Key.Escape)
         {
-            // Priority 1: close any open inline editor
+            // Priority 1: close any open inline editor — Esc accepts (commits) edits
             if (_editingTaskId.HasValue || _creatingTaskId.HasValue)
             {
                 if (_editingTaskId == _creatingTaskId) CancelCreateTask();
-                else CancelInlineEdit();
+                else
+                {
+                    var editRow = _rows.FirstOrDefault(r => r.TaskId == _editingTaskId);
+                    if (editRow is not null) CommitInlineEdit(editRow);
+                    else CancelInlineEdit();
+                }
                 e.Handled = true;
                 return;
             }
-            if (_editingNotesTaskId.HasValue) { CancelNotesEdit(); e.Handled = true; return; }
+            if (_editingNotesTaskId.HasValue)
+            {
+                var notesRow = _rows.FirstOrDefault(r => r.TaskId == _editingNotesTaskId);
+                if (notesRow is not null) CommitNotesEdit(notesRow);
+                else CancelNotesEdit();
+                e.Handled = true;
+                return;
+            }
             if (_editingStartAtTaskId.HasValue) { CancelStartEdit(); e.Handled = true; return; }
             if (_editingDueAtTaskId.HasValue) { CancelDueEdit(); e.Handled = true; return; }
             if (_renamingPageId.HasValue) { _renamingPageId = null; Refresh(); e.Handled = true; return; }
             if (_creatingHeading) { CancelHeadingEdit(); e.Handled = true; return; }
 
-            // Priority 2: clear search text
-            if (!string.IsNullOrEmpty(SearchBox.Text) && !SearchBox.IsKeyboardFocusWithin)
+            // Priority 2: close and reset search
+            if (SearchBar.Visibility == Visibility.Visible || !string.IsNullOrEmpty(SearchBox.Text))
             {
-                SearchBox.Clear();
+                HideSearchBar(clear: true);
                 e.Handled = true;
                 return;
             }
 
-            // Priority 3: exit focused heading
-            if (_focusedHeadingId.HasValue)
+            // Priority 3: collapse expanded task rows and their horizontal settings rail
+            if (CollapseAllExpandedTasks())
             {
-                _focusedHeadingId = null;
                 Refresh();
+                e.Handled = true;
+                return;
             }
-            else
-            {
-                Hide();
-            }
+
             e.Handled = true;
             return;
         }
@@ -1288,10 +1654,16 @@ public partial class MainWindow : Window
             }
         }
 
-        if (ctrl && e.Key == Key.F || e.Key == Key.Oem2 && !ctrl)
+        if (ctrl && e.Key == Key.F)
         {
-            SearchBox.Focus();
-            SearchBox.SelectAll();
+            ToggleSearchBar();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Oem2 && !ctrl)
+        {
+            ShowSearchBar();
             e.Handled = true;
             return;
         }
@@ -1341,32 +1713,44 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!ctrl && alt && !shift && (e.Key == Key.Left || e.Key == Key.Right))
+        {
+            SwitchPageIncludingAgenda(e.Key == Key.Left ? -1 : 1);
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && e.Key == Key.W)
+        {
+            HideToTray();
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl && alt)
         {
-            var number = NumberFromKey(e.Key);
+            var number = NumberFromKey(e.Key == Key.System ? e.SystemKey : e.Key);
             if (number is >= 1 and <= 9)
             {
                 JumpToPage(number.Value - 1);
                 e.Handled = true;
             }
         }
+
+        // Shift+Left/Right state cycle — must be in PreviewKeyDown so the
+        // ListBox (SelectionMode=Extended) never sees it and triggers range-select.
+        var shift2 = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+        if (!ctrl && shift2 && !alt && Selected is { IsTask: true } sel2
+            && (e.Key == Key.Left || e.Key == Key.Right))
+        {
+            var next = CycleStateForward(sel2.State, e.Key == Key.Right ? 1 : -1);
+            SetState(sel2.TaskId, next);
+            e.Handled = true;
+        }
     }
 
     private void OnPreviewKeyUp(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.System && (e.SystemKey == Key.LeftAlt || e.SystemKey == Key.RightAlt)
-            && !MainMenu.IsKeyboardFocusWithin)
-        {
-            MainMenu.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void MainMenu_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        if ((Keyboard.Modifiers & ModifierKeys.Alt) != ModifierKeys.Alt)
-        {
-            MainMenu.Visibility = Visibility.Collapsed;
-        }
     }
 
     private TaskRowVm? Selected => TaskList.SelectedItem as TaskRowVm;
@@ -1408,47 +1792,70 @@ public partial class MainWindow : Window
 
         var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
         var shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var alt = (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
 
-        if (ctrl && shift)
+        if (!ctrl && !shift && !alt && key is Key.Up or Key.Down)
         {
-            if (sel.IsTask && (e.Key == Key.Up || e.Key == Key.Down))
-            {
-                MoveTaskWithinHeading(sel.TaskId, e.Key == Key.Up ? -1 : 1);
-                e.Handled = true;
-                return;
-            }
-
-            if (sel.IsTask && (e.Key == Key.Left || e.Key == Key.Right))
-            {
-                MoveTaskToAdjacentHeading(sel.TaskId, e.Key == Key.Left ? -1 : 1);
-                e.Handled = true;
-                return;
-            }
-
-            if (sel.IsHeading && !sel.IsNewHeading && (e.Key == Key.Up || e.Key == Key.Down))
-            {
-                MoveHeading(sel.HeadingId, e.Key == Key.Up ? -1 : 1);
-                e.Handled = true;
-                return;
-            }
-        }
-
-        if (ctrl && !shift && sel.IsTask && (e.Key == Key.Left || e.Key == Key.Right))
-        {
-            var next = CycleStateForward(sel.State, e.Key == Key.Right ? 1 : -1);
-            SetState(sel.TaskId, next);
+            MoveSelectionBy(key == Key.Up ? -1 : 1);
             e.Handled = true;
             return;
         }
 
-        if (e.Key == Key.Insert)
+        if (_agendaMode
+            && ((ctrl && shift && (key is Key.Up or Key.Down or Key.Left or Key.Right))
+                || (alt && !ctrl && !shift && (key is Key.Up or Key.Down))))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (ctrl && shift)
+        {
+            if (sel.IsTask && (key == Key.Up || key == Key.Down))
+            {
+                MoveTaskWithinHeading(sel.TaskId, key == Key.Up ? -1 : 1);
+                e.Handled = true;
+                return;
+            }
+
+            if (sel.IsTask && (key == Key.Left || key == Key.Right))
+            {
+                MoveTaskToAdjacentHeading(sel.TaskId, key == Key.Left ? -1 : 1);
+                e.Handled = true;
+                return;
+            }
+
+            if (sel.IsHeading && !sel.IsNewHeading && (key == Key.Up || key == Key.Down))
+            {
+                MoveHeading(sel.HeadingId, key == Key.Up ? -1 : 1);
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (alt && !ctrl && !shift && (key == Key.Up || key == Key.Down))
+        {
+            if (sel.IsTask)
+            {
+                MoveTaskWithinHeading(sel.TaskId, key == Key.Up ? -1 : 1);
+            }
+            else if (sel.IsHeading && !sel.IsNewHeading)
+            {
+                MoveHeading(sel.HeadingId, key == Key.Up ? -1 : 1);
+            }
+            e.Handled = true;
+            return;
+        }
+
+        if (key == Key.Insert)
         {
             BeginCreateTaskNearSelection(after: true);
             e.Handled = true;
             return;
         }
 
-        if (ctrl && e.Key == Key.Enter && sel.IsTask)
+        if (ctrl && key == Key.Enter && sel.IsTask)
         {
             if (sel.IsExpanded)
                 BeginNotesEdit(sel.TaskId);
@@ -1458,7 +1865,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if ((e.Key == Key.Enter || e.Key == Key.F2) && sel.IsTask
+        if ((key == Key.Enter || key == Key.F2) && sel.IsTask
             && _editingTaskId != sel.TaskId && _editingNotesTaskId != sel.TaskId)
         {
             BeginInlineEdit(sel.TaskId);
@@ -1466,23 +1873,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        if ((e.Key == Key.Enter || e.Key == Key.F2) && sel.IsNewHeading)
+        if ((key == Key.Enter || key == Key.F2) && sel.IsNewHeading)
         {
             BeginCreateHeading();
             e.Handled = true;
             return;
         }
 
-        if (e.Key == Key.Delete && sel.IsTask)
+        if (key == Key.Delete)
         {
-            _db.DeleteTask(sel.TaskId);
-            _db.DeleteRemindersForTask(sel.TaskId);
-            Refresh();
+            ExecuteDeleteSelected();
             e.Handled = true;
             return;
         }
 
-        if (e.Key == Key.Space)
+        if (key == Key.Space)
         {
             if (sel.IsHeading && !sel.IsNewHeading)
             {
@@ -1496,28 +1901,87 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (sel.IsTask && e.Key >= Key.D1 && e.Key <= Key.D6)
+        if (sel.IsTask && key >= Key.D1 && key <= Key.D6)
         {
-            SetState(sel.TaskId, (TaskState)(e.Key - Key.D1 + 1));
+            SetState(sel.TaskId, (TaskState)(key - Key.D1 + 1));
             e.Handled = true;
             return;
         }
-        if (sel.IsTask && e.Key >= Key.NumPad1 && e.Key <= Key.NumPad6)
+        if (sel.IsTask && key >= Key.NumPad1 && key <= Key.NumPad6)
         {
-            SetState(sel.TaskId, (TaskState)(e.Key - Key.NumPad1 + 1));
+            SetState(sel.TaskId, (TaskState)(key - Key.NumPad1 + 1));
             e.Handled = true;
             return;
         }
 
-        if (sel.IsTask && ctrl && e.Key == Key.D)
+        if (sel.IsTask && ctrl && key == Key.D)
         {
             EditTask(sel.TaskId, focusReminder: true);
             e.Handled = true;
         }
     }
 
+    private void ToggleSearchBar()
+    {
+        if (SearchBar.Visibility == Visibility.Visible)
+        {
+            HideSearchBar(clear: true);
+        }
+        else
+        {
+            ShowSearchBar();
+        }
+    }
+
+    private void ShowSearchBar()
+    {
+        SearchBar.Visibility = Visibility.Visible;
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+    }
+
+    private void HideSearchBar(bool clear)
+    {
+        if (clear && (!string.IsNullOrEmpty(_searchText) || !string.IsNullOrEmpty(SearchBox.Text)))
+        {
+            _searchText = "";
+            SearchBox.Text = "";
+            Refresh();
+        }
+
+        SearchBar.Visibility = Visibility.Collapsed;
+        if (SearchBox.IsKeyboardFocusWithin)
+            TaskList.Focus();
+    }
+
+    private void TaskList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (IsInlineEditorFocused()) return;
+
+        var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+        var alt = (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        if (!ctrl && !shift && !alt && key is Key.Up or Key.Down)
+        {
+            MoveSelectionBy(key == Key.Up ? -1 : 1);
+            e.Handled = true;
+        }
+    }
+
+    private void TaskList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSelectionCollapse) return;
+
+        var selectedTaskId = Selected is { IsTask: true } selected ? selected.TaskId : (Guid?)null;
+        if (!CollapseExpandedTasksExcept(selectedTaskId)) return;
+        Refresh();
+    }
+
     private void TaskList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (IsOriginalSourceWithin<MarkdownTextBlock>(e.OriginalSource as DependencyObject)) return;
         if (Selected is { IsTask: true } sel) BeginInlineEdit(sel.TaskId);
     }
 
@@ -1529,7 +1993,8 @@ public partial class MainWindow : Window
         {
             { IsTask: true, IsNewTask: false } => new DragPayload("task", row.TaskId),
             { IsHeading: true, IsNewHeading: false, HeadingId: { } headingId } => new DragPayload("heading", headingId),
-            { IsHeading: true, IsNewHeading: false, HeadingId: null, HeadingTitle: "Inbox" } => new DragPayload("inbox", _activePageId),
+            { IsHeading: true, IsNewHeading: false, HeadingId: null } when row.HeadingTitle.StartsWith("Inbox", StringComparison.OrdinalIgnoreCase)
+                => new DragPayload("inbox", row.PageId ?? _activePageId),
             _ => null,
         };
     }
@@ -1591,7 +2056,25 @@ public partial class MainWindow : Window
         }
 
         var target = RowFromOriginalSource(e.OriginalSource as DependencyObject);
-        if (target is null || IsSelfDrop(payload, target))
+        if (target is null)
+        {
+            // Allow drop on empty page for heading/inbox/task payloads
+            if (_rows.Count == 0 && payload.Kind is "heading" or "inbox" or "task")
+            {
+                var layer = AdornerLayer.GetAdornerLayer(TaskList);
+                if (layer is not null) ShowInsertionLine(TaskList, false);
+                e.Effects = DragDropEffects.Move;
+            }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+                ClearInsertionLine();
+            }
+            e.Handled = true;
+            return;
+        }
+
+        if (IsSelfDrop(payload, target))
         {
             e.Effects = DragDropEffects.None;
             ClearInsertionLine();
@@ -1631,7 +2114,15 @@ public partial class MainWindow : Window
         }
 
         var target = RowFromOriginalSource(e.OriginalSource as DependencyObject);
-        if (target is null || IsSelfDrop(payload, target)) return;
+        if (target is null)
+        {
+            // Drop on empty page
+            if (payload.Kind == "heading") MoveHeadingToPage(payload.Id, _activePageId);
+            else if (payload.Kind == "inbox") MoveInboxToPage(payload.Id, _activePageId);
+            else if (payload.Kind == "task") MoveTaskToPage(payload.Id, _activePageId);
+            return;
+        }
+        if (IsSelfDrop(payload, target)) return;
 
         var container = TaskList.ItemContainerGenerator.ContainerFromItem(target) as FrameworkElement;
         var after = container is not null && ShouldInsertAfter(payload, target, e.GetPosition(container), container.ActualHeight);
@@ -1644,13 +2135,13 @@ public partial class MainWindow : Window
 
         if (payload.Kind == "inbox")
         {
-            MoveInboxToPage(payload.Id, _activePageId);
+            MoveInboxToPage(payload.Id, target.PageId ?? _activePageId);
             return;
         }
 
         if (target.IsHeading)
         {
-            MoveTaskToHeadingEnd(payload.Id, target.HeadingId);
+            MoveTaskToHeadingEnd(payload.Id, target.HeadingId, target.PageId);
         }
         else
         {
@@ -1666,7 +2157,7 @@ public partial class MainWindow : Window
         {
             "task" => target.IsTask && target.TaskId == payload.Id,
             "heading" => target.IsHeading && target.HeadingId == payload.Id,
-            "inbox" => target.IsHeading && target.HeadingId is null && target.HeadingTitle == "Inbox",
+            "inbox" => target.IsHeading && target.HeadingId is null && target.PageId == payload.Id,
             _ => false,
         };
 
@@ -1736,10 +2227,11 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is TaskRowVm { IsTask: true } row)
         {
             ToggleExpanded(row.TaskId);
+            e.Handled = true;
         }
     }
 
-    private void InlineTitleBox_KeyDown(object sender, KeyEventArgs e)
+    private void InlineTitleBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row) return;
         if (e.Key == Key.Enter)
@@ -1749,7 +2241,16 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.Escape)
         {
-            CancelInlineEdit();
+            CommitInlineEdit(row);
+            e.Handled = true;
+        }
+    }
+
+    private void TitleTextBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is TextBox box)
+        {
+            box.SelectAll();
             e.Handled = true;
         }
     }
@@ -1799,7 +2300,8 @@ public partial class MainWindow : Window
             var box = container is null ? null : FindVisualChild<TextBox>(container);
             if (box is null) return;
             box.Focus();
-            box.SelectAll();
+            box.CaretIndex = box.Text.Length;
+            box.ScrollToEnd();
         });
     }
 
@@ -1962,6 +2464,7 @@ public partial class MainWindow : Window
     {
         _expandedTaskIds.Add(taskId);
         _editingNotesTaskId = taskId;
+        _notesDrafts[taskId] = FindTask(taskId)?.Notes ?? "";
         Refresh();
         var row = _rows.FirstOrDefault(r => r.TaskId == taskId);
         if (row is null) return;
@@ -1973,7 +2476,8 @@ public partial class MainWindow : Window
             var box = FindVisualChildByName<TextBox>(container, "NotesEditor");
             if (box is null) return;
             box.Focus();
-            box.SelectAll();
+            box.CaretIndex = box.Text.Length;
+            box.ScrollToEnd();
         });
     }
 
@@ -1983,19 +2487,22 @@ public partial class MainWindow : Window
         var task = FindTask(row.TaskId);
         if (task is not null)
         {
-            var notes = string.IsNullOrWhiteSpace(row.EditNotes) ? null : row.EditNotes.Trim();
+            var raw = _notesDrafts.TryGetValue(row.TaskId, out var draft) ? draft : row.EditNotes;
+            var notes = string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
             if (task.Notes != notes)
             {
                 task.Notes = notes;
                 _db.SaveTask(task);
             }
         }
+        _notesDrafts.Remove(row.TaskId);
         _editingNotesTaskId = null;
         Refresh();
     }
 
     private void CancelNotesEdit()
     {
+        if (_editingNotesTaskId is { } taskId) _notesDrafts.Remove(taskId);
         _editingNotesTaskId = null;
         Refresh();
     }
@@ -2060,6 +2567,7 @@ public partial class MainWindow : Window
                 if (parsed is null) { FocusDatePicker(row.TaskId, "DueDatePicker"); return; }
                 task.DueAt = parsed;
             }
+            SyncReminderToDue(task);
             _db.SaveTask(task);
         }
         _editingDueAtTaskId = null;
@@ -2147,9 +2655,30 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is TaskRowVm row)
         {
+            TaskList.SelectedItem = row;
             BeginNotesEdit(row.TaskId);
             e.Handled = true;
         }
+    }
+
+    private void TitleText_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm { IsTask: true } row)
+        {
+            return;
+        }
+
+        TaskList.SelectedItem = row;
+        if (!string.IsNullOrWhiteSpace(row.Link)
+            && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            OpenTaskLink(row.Link);
+        }
+        else
+        {
+            BeginInlineEdit(row.TaskId);
+        }
+        e.Handled = true;
     }
 
     private void TaskLink_Click(object sender, RoutedEventArgs e)
@@ -2157,9 +2686,14 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row || string.IsNullOrWhiteSpace(row.Link))
             return;
 
+        OpenTaskLink(row.Link);
+    }
+
+    private void OpenTaskLink(string link)
+    {
         try
         {
-            Process.Start(new ProcessStartInfo(row.Link) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });
         }
         catch
         {
@@ -2171,7 +2705,227 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row) return;
         var task = FindTask(row.TaskId);
-        if (task is not null) { task.DueAt = null; _db.SaveTask(task); Refresh(); }
+        if (task is not null) { task.DueAt = null; SyncReminderToDue(task); _db.SaveTask(task); Refresh(); }
+    }
+
+    private void PriorityCombo_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ComboBox combo) return;
+        if (combo.DataContext is not TaskRowVm row) return;
+        combo.SelectionChanged -= PriorityCombo_SelectionChanged;
+        combo.SelectedIndex = row.Priority switch
+        {
+            TaskPriority.Low => 1,
+            TaskPriority.Medium => 2,
+            TaskPriority.High => 3,
+            _ => 0,
+        };
+        combo.SelectionChanged += PriorityCombo_SelectionChanged;
+    }
+
+    private void PriorityCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo) return;
+        if (combo.DataContext is not TaskRowVm row) return;
+        var task = FindTask(row.TaskId);
+        if (task is null) return;
+        task.Priority = combo.SelectedIndex switch
+        {
+            1 => TaskPriority.Low,
+            2 => TaskPriority.Medium,
+            3 => TaskPriority.High,
+            _ => null,
+        };
+        _db.SaveTask(task);
+        Refresh();
+    }
+
+    private void EffortBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox box) return;
+        if (box.DataContext is not TaskRowVm row) return;
+        SaveEffort(row.TaskId, box.Text);
+    }
+
+    private void EffortBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Escape)
+        {
+            if (sender is TextBox box && box.DataContext is TaskRowVm row)
+                SaveEffort(row.TaskId, box.Text);
+            e.Handled = true;
+        }
+    }
+
+    private void SaveEffort(Guid taskId, string text)
+    {
+        var task = FindTask(taskId);
+        if (task is null) return;
+        var effort = int.TryParse(text.Trim(), out var h) && h >= 0 ? (int?)h : null;
+        if (task.EffortHours == effort) return;
+        task.EffortHours = effort;
+        _db.SaveTask(task);
+        Refresh();
+    }
+
+    private void LinkBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox box) return;
+        if (box.DataContext is not TaskRowVm row) return;
+        SaveLink(row.TaskId, box.Text);
+    }
+
+    private void LinkBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Escape)
+        {
+            if (sender is TextBox box && box.DataContext is TaskRowVm row)
+                SaveLink(row.TaskId, box.Text);
+            e.Handled = true;
+        }
+    }
+
+    private void SaveLink(Guid taskId, string text)
+    {
+        var task = FindTask(taskId);
+        if (task is null) return;
+        var link = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        if (task.Link == link) return;
+        task.Link = link;
+        _db.SaveTask(task);
+        Refresh();
+    }
+
+    private void RecurrenceCombo_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ComboBox combo || combo.DataContext is not TaskRowVm row) return;
+        combo.SelectionChanged -= RecurrenceCombo_SelectionChanged;
+        combo.SelectedIndex = TaskRecurrence.Normalize(row.Recurrence) switch
+        {
+            "daily" => 1,
+            "weekly" => 2,
+            "biweekly" => 3,
+            "monthly" => 4,
+            "quarterly" => 5,
+            "yearly" => 6,
+            _ => 0,
+        };
+        combo.SelectionChanged += RecurrenceCombo_SelectionChanged;
+    }
+
+    private void RecurrenceCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo || combo.DataContext is not TaskRowVm row) return;
+        if (!combo.IsKeyboardFocusWithin && !combo.IsDropDownOpen) return;
+        var task = FindTask(row.TaskId);
+        if (task is null) return;
+        var recurrence = combo.SelectedIndex switch
+        {
+            1 => "daily",
+            2 => "weekly",
+            3 => "biweekly",
+            4 => "monthly",
+            5 => "quarterly",
+            6 => "yearly",
+            _ => null,
+        };
+        if (task.Recurrence == recurrence) return;
+        task.Recurrence = recurrence;
+        _db.SaveTask(task);
+        Refresh();
+    }
+
+    private void ReminderEnabledCheck_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox check || check.DataContext is not TaskRowVm row) return;
+        check.Checked -= ReminderEnabledCheck_Changed;
+        check.Unchecked -= ReminderEnabledCheck_Changed;
+        check.IsEnabled = row.DueAt.HasValue;
+        check.IsChecked = row.ReminderActive;
+        check.Checked += ReminderEnabledCheck_Changed;
+        check.Unchecked += ReminderEnabledCheck_Changed;
+    }
+
+    private void ReminderEnabledCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox check || check.DataContext is not TaskRowVm row) return;
+        SaveReminderFromDue(row.TaskId, check.IsChecked == true, row.ReminderAutoSnoozeEnabled);
+    }
+
+    private void ReminderNagCheck_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox check || check.DataContext is not TaskRowVm row) return;
+        check.Checked -= ReminderNagCheck_Changed;
+        check.Unchecked -= ReminderNagCheck_Changed;
+        check.IsEnabled = row.DueAt.HasValue;
+        check.IsChecked = row.ReminderActive && row.ReminderAutoSnoozeEnabled;
+        check.Checked += ReminderNagCheck_Changed;
+        check.Unchecked += ReminderNagCheck_Changed;
+    }
+
+    private void ReminderNagCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox check || check.DataContext is not TaskRowVm row) return;
+        SaveReminderFromDue(row.TaskId, row.ReminderActive || check.IsChecked == true, check.IsChecked == true);
+    }
+
+    private void ReminderSnooze5_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row || !row.ReminderActive) return;
+        _reminders.Snooze(row.TaskId, 5);
+        Refresh();
+    }
+
+    private void ReminderAck_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row || !row.ReminderActive) return;
+        _reminders.Acknowledge(row.TaskId);
+        Refresh();
+    }
+
+    private void SaveReminderFromDue(Guid taskId, bool enabled, bool continuousNag)
+    {
+        var task = FindTask(taskId);
+        if (task is null) return;
+        if (!enabled)
+        {
+            _db.DeleteRemindersForTask(taskId);
+            Refresh();
+            return;
+        }
+
+        if (task.DueAt is null)
+        {
+            Refresh();
+            return;
+        }
+
+        var rem = _db.GetReminderForTask(taskId) ?? _entities.CreateReminder(taskId, task.DueAt.Value);
+        rem.Enabled = true;
+        rem.FireAt = task.DueAt.Value;
+        rem.NextFireAt = task.DueAt.Value;
+        rem.Status = ReminderStatus.Active;
+        rem.AutoSnoozeEnabled = continuousNag;
+        rem.AutoSnoozeIntervalMinutes = 5;
+        _db.SaveReminder(rem);
+        Refresh();
+    }
+
+    private void SyncReminderToDue(TaskItem task)
+    {
+        var rem = _db.GetReminderForTask(task.Id);
+        if (rem is null) return;
+        if (task.DueAt is null)
+        {
+            _db.DeleteRemindersForTask(task.Id);
+            return;
+        }
+
+        rem.FireAt = task.DueAt.Value;
+        rem.NextFireAt = task.DueAt.Value;
+        rem.Status = ReminderStatus.Active;
+        rem.Enabled = true;
+        _db.SaveReminder(rem);
     }
 
     private void DueDatePicker_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
@@ -2184,6 +2938,7 @@ public partial class MainWindow : Window
         var existing = task.DueAt?.ToLocalTime();
         var local = selected.Date.Add(existing?.TimeOfDay ?? TimeSpan.Zero);
         task.DueAt = DateTime.SpecifyKind(local, DateTimeKind.Local).ToUniversalTime();
+        SyncReminderToDue(task);
         _db.SaveTask(task);
         _editingDueAtTaskId = null;
         Refresh();
@@ -2216,27 +2971,52 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row) return;
         if (e.Key == Key.Escape)
         {
-            CancelNotesEdit();
+            if ((sender as FrameworkElement)?.DataContext is TaskRowVm row2)
+                CommitNotesEdit(row2);
+            else
+                CancelNotesEdit();
             e.Handled = true;
         }
-        else if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
+        else if (e.Key == Key.System && e.SystemKey == Key.Return)
         {
-            // Alt+Enter: insert next bullet point
+            // Alt+Enter: add bullet to current line (if none), then new bullet line
             if (sender is not TextBox box) return;
             var caret = box.CaretIndex;
             var text = box.Text;
             var lineStart = text.LastIndexOf('\n', Math.Max(0, caret - 1)) + 1;
             var lineText = text.Substring(lineStart, caret - lineStart);
-            var prefix = lineText.StartsWith("- ") ? "- " : lineText.StartsWith("• ") ? "• " : "- ";
-            var insert = "\n" + prefix;
-            box.Text = text.Substring(0, caret) + insert + text.Substring(caret);
-            box.CaretIndex = caret + insert.Length;
+            var hasBullet = lineText.StartsWith("- ") || lineText.StartsWith("• ");
+            string insert;
+            if (!hasBullet)
+            {
+                // Add bullet to current line then newline with bullet
+                box.Text = text.Substring(0, lineStart) + "- " + text.Substring(lineStart);
+                var newCaret = lineStart + 2 + (caret - lineStart);
+                insert = "\n- ";
+                box.Text = box.Text.Substring(0, newCaret) + insert + box.Text.Substring(newCaret);
+                box.CaretIndex = newCaret + insert.Length;
+            }
+            else
+            {
+                var prefix = lineText.StartsWith("- ") ? "- " : "• ";
+                insert = "\n" + prefix;
+                box.Text = text.Substring(0, caret) + insert + text.Substring(caret);
+                box.CaretIndex = caret + insert.Length;
+            }
             e.Handled = true;
         }
         else if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
         {
             CommitNotesEdit(row);
             e.Handled = true;
+        }
+    }
+
+    private void NotesEditor_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is TextBox box && box.DataContext is TaskRowVm row && _editingNotesTaskId == row.TaskId)
+        {
+            _notesDrafts[row.TaskId] = box.Text;
         }
     }
 
@@ -2250,21 +3030,121 @@ public partial class MainWindow : Window
 
     private void ToggleExpanded(Guid taskId)
     {
-        var selectedKey = Selected?.RowKey;
+        var selectedKey = $"t:{taskId}";
         if (!_expandedTaskIds.Add(taskId))
-            _expandedTaskIds.Remove(taskId);
-        Refresh();
-        // Restore keyboard focus to the ListBoxItem so arrow keys work correctly
-        if (selectedKey is not null)
         {
-            Dispatcher.BeginInvoke(() =>
-            {
-                var row = _rows.FirstOrDefault(r => r.RowKey == selectedKey);
-                if (row is null) return;
-                var container = TaskList.ItemContainerGenerator.ContainerFromItem(row) as ListBoxItem;
-                container?.Focus();
-            });
+            _expandedTaskIds.Remove(taskId);
+            _settingsExpandedTaskIds.Remove(taskId);
         }
+        Refresh();
+        Dispatcher.BeginInvoke(() =>
+        {
+            var row = _rows.FirstOrDefault(r => r.RowKey == selectedKey);
+            if (row is null) return;
+            var index = _rows.IndexOf(row);
+            TaskList.SelectedIndex = index;
+            TaskList.ScrollIntoView(row);
+            TaskList.UpdateLayout();
+            Keyboard.Focus(TaskList);
+        }, DispatcherPriority.ContextIdle);
+    }
+
+    private void SettingsExpandButton_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TaskRowVm row) return;
+        ToggleTaskSettings(row.TaskId);
+        e.Handled = true;
+    }
+
+    private void ToggleTaskSettings(Guid taskId)
+    {
+        _expandedTaskIds.Add(taskId);
+        if (!_settingsExpandedTaskIds.Add(taskId))
+            _settingsExpandedTaskIds.Remove(taskId);
+
+        Refresh();
+        SelectTaskRow(taskId);
+    }
+
+    private void MoveSelectionBy(int delta)
+    {
+        if (_rows.Count == 0) return;
+
+        var current = TaskList.SelectedItem as TaskRowVm;
+        var index = current is null ? TaskList.SelectedIndex : _rows.IndexOf(current);
+        if (index < 0) index = TaskList.SelectedIndex;
+        if (index < 0) index = delta > 0 ? -1 : _rows.Count;
+
+        var nextIndex = Math.Clamp(index + delta, 0, _rows.Count - 1);
+        var next = _rows[nextIndex];
+        TaskList.SelectedIndex = nextIndex;
+        TaskList.SelectedItem = next;
+        TaskList.ScrollIntoView(next);
+        TaskList.Focus();
+    }
+
+    private bool CollapseExpandedTasksExcept(Guid? selectedTaskId)
+    {
+        if (_expandedTaskIds.Count == 0 && _settingsExpandedTaskIds.Count == 0) return false;
+
+        var changed = _expandedTaskIds.RemoveWhere(id => selectedTaskId != id) > 0;
+        changed |= _settingsExpandedTaskIds.RemoveWhere(id => selectedTaskId != id) > 0;
+
+        if (_editingNotesTaskId is { } notesTaskId && selectedTaskId != notesTaskId)
+        {
+            _editingNotesTaskId = null;
+            _notesDrafts.Remove(notesTaskId);
+            changed = true;
+        }
+
+        if (_editingStartAtTaskId is { } startTaskId && selectedTaskId != startTaskId)
+        {
+            _editingStartAtTaskId = null;
+            changed = true;
+        }
+
+        if (_editingDueAtTaskId is { } dueTaskId && selectedTaskId != dueTaskId)
+        {
+            _editingDueAtTaskId = null;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private bool CollapseAllExpandedTasks()
+    {
+        if (_expandedTaskIds.Count == 0
+            && _settingsExpandedTaskIds.Count == 0
+            && _editingNotesTaskId is null
+            && _editingStartAtTaskId is null
+            && _editingDueAtTaskId is null)
+        {
+            return false;
+        }
+
+        _expandedTaskIds.Clear();
+        _settingsExpandedTaskIds.Clear();
+        if (_editingNotesTaskId is { } notesTaskId)
+        {
+            _notesDrafts.Remove(notesTaskId);
+            _editingNotesTaskId = null;
+        }
+        _editingStartAtTaskId = null;
+        _editingDueAtTaskId = null;
+        return true;
+    }
+
+    private void SelectTaskRow(Guid taskId)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            var row = _rows.FirstOrDefault(r => r.TaskId == taskId);
+            if (row is null) return;
+            TaskList.SelectedItem = row;
+            TaskList.ScrollIntoView(row);
+            Keyboard.Focus(TaskList);
+        }, DispatcherPriority.ContextIdle);
     }
 
     private void ToggleHeadingFocus(Guid? headingId)
@@ -2287,43 +3167,71 @@ public partial class MainWindow : Window
         var task = FindTask(taskId);
         if (task is null) return;
         var wasDone = task.State == TaskState.Done;
+        var wasArchived = task.State == TaskState.Archived || task.ArchivedAt is not null;
+        var existingReminder = _db.GetReminderForTask(taskId);
         task.State = state;
         if (state == TaskState.Done)
         {
             task.CompletedAt ??= _clock.UtcNow;
             _reminders.Acknowledge(taskId);
             _recentlyCompletedAt[taskId] = DateTime.UtcNow;
+            CreateNextRecurringTask(task, existingReminder);
+        }
+        else if (state == TaskState.Archived)
+        {
+            task.ArchivedAt ??= _clock.UtcNow;
+            _reminders.Acknowledge(taskId);
         }
         else if (wasDone)
         {
             task.CompletedAt = null;
             _recentlyCompletedAt.Remove(taskId);
         }
+        if (state != TaskState.Archived && wasArchived)
+        {
+            task.ArchivedAt = null;
+        }
 
         _db.SaveTask(task);
         Refresh();
     }
 
-    private static TaskState NextCycleState(TaskState state) => state switch
+    private void CreateNextRecurringTask(TaskItem completedTask, Reminder? previousReminder)
     {
-        TaskState.Action => TaskState.Next,
-        TaskState.Next => TaskState.OnHold,
-        TaskState.OnHold => TaskState.Waiting,
-        TaskState.Waiting => TaskState.Someday,
-        TaskState.Someday => TaskState.Done,
-        TaskState.Done => TaskState.Action,
-        _ => TaskState.Action,
-    };
+        var recurrence = TaskRecurrence.Normalize(completedTask.Recurrence);
+        if (recurrence is null) return;
 
-    private static readonly TaskState[] _stateCycle = [TaskState.Action, TaskState.Next, TaskState.Done];
+        var nextDue = TaskRecurrence.NextUtc(completedTask.DueAt ?? completedTask.CompletedAt ?? _clock.UtcNow, recurrence);
+        var nextStart = completedTask.StartAt is { } start
+            ? TaskRecurrence.NextUtc(start, recurrence)
+            : null;
+
+        var next = _entities.CreateTask(
+            completedTask.PageId,
+            completedTask.Title,
+            completedTask.HeadingId,
+            TaskState.Action,
+            SortOrderAtEndInPage(completedTask.PageId, completedTask.HeadingId));
+        next.Notes = completedTask.Notes;
+        next.StartAt = nextStart;
+        next.DueAt = nextDue;
+        next.Recurrence = recurrence;
+        next.Link = completedTask.Link;
+        next.Priority = completedTask.Priority;
+        next.EffortHours = completedTask.EffortHours;
+        _db.SaveTask(next);
+
+        if (previousReminder is not null && next.DueAt is { } due)
+        {
+            var rem = _entities.CreateReminder(next.Id, due);
+            rem.AutoSnoozeEnabled = previousReminder.AutoSnoozeEnabled;
+            rem.AutoSnoozeIntervalMinutes = previousReminder.AutoSnoozeIntervalMinutes;
+            _db.SaveReminder(rem);
+        }
+    }
 
     private static TaskState CycleStateForward(TaskState state, int delta)
-    {
-        var idx = Array.IndexOf(_stateCycle, state);
-        if (idx < 0) idx = 0;
-        idx = ((idx + delta) % _stateCycle.Length + _stateCycle.Length) % _stateCycle.Length;
-        return _stateCycle[idx];
-    }
+        => StateCycle.Move(state, delta);
 
     private void CreateHeading()
     {
@@ -2429,7 +3337,9 @@ public partial class MainWindow : Window
     private void MoveHeading(Guid? headingId, int delta)
     {
         if (!headingId.HasValue) return;
-        var headings = CurrentHeadings().OrderBy(h => h.SortOrder).ThenBy(h => h.Title).ToList();
+        var source = FindHeading(headingId.Value);
+        if (source is null) return;
+        var headings = _db.GetHeadings(source.PageId).OrderBy(h => h.SortOrder).ThenBy(h => h.Title).ToList();
         var index = headings.FindIndex(h => h.Id == headingId.Value);
         var targetIndex = index + delta;
         if (index < 0 || targetIndex < 0 || targetIndex >= headings.Count) return;
@@ -2471,7 +3381,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                MoveHeadingToPage(headingId, _activePageId);
+                MoveHeadingToPage(headingId, target.PageId ?? _activePageId);
             }
 
             return;
@@ -2484,7 +3394,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            MoveHeadingToPage(headingId, _activePageId);
+            MoveHeadingToPage(headingId, target.PageId ?? _activePageId);
         }
     }
 
@@ -2519,12 +3429,12 @@ public partial class MainWindow : Window
         Refresh();
     }
 
-    private void MoveTaskToHeadingEnd(Guid taskId, Guid? headingId)
+    private void MoveTaskToHeadingEnd(Guid taskId, Guid? headingId, Guid? explicitPageId = null)
     {
         var task = FindTask(taskId);
         if (task is null) return;
 
-        var pageId = _activePageId;
+        var pageId = explicitPageId ?? _activePageId;
         if (headingId.HasValue)
         {
             var heading = FindHeading(headingId.Value);
@@ -2605,6 +3515,31 @@ public partial class MainWindow : Window
         SetActivePage(_pages[next]);
     }
 
+    private void SwitchPageIncludingAgenda(int delta)
+    {
+        if (_pages.Count == 0) RefreshPages();
+        if (_pages.Count == 0 && !_showAgendaTab) return;
+
+        var count = _pages.Count + (_showAgendaTab ? 1 : 0);
+        if (count == 0) return;
+
+        var index = _agendaMode
+            ? 0
+            : _pages.FindIndex(p => p.Id == _activePageId) + (_showAgendaTab ? 1 : 0);
+        if (index < 0) index = _showAgendaTab ? 0 : 0;
+
+        var next = (index + delta + count) % count;
+        if (_showAgendaTab && next == 0)
+        {
+            SetAgendaMode();
+            return;
+        }
+
+        var pageIndex = next - (_showAgendaTab ? 1 : 0);
+        if (pageIndex >= 0 && pageIndex < _pages.Count)
+            SetActivePage(_pages[pageIndex]);
+    }
+
     private void JumpToPage(int index)
     {
         if (_pages.Count == 0) RefreshPages();
@@ -2646,8 +3581,8 @@ public partial class MainWindow : Window
         if (page is null) return;
         page.LastFilterView = _filterMode;
         page.LastFocusedHeadingId = _focusedHeadingId == Guid.Empty ? null : _focusedHeadingId;
-        page.LastSearchText = _searchText;
-        _db.SavePage(page);
+        page.LastSearchText = "";
+        _db.SavePage(page, enqueueSync: false);
     }
 
     private void RestoreWindowPlacement()
@@ -2695,11 +3630,13 @@ public partial class MainWindow : Window
     private void RestorePageViewState(DomainPage page)
     {
         _filterMode = page.LastFilterView ?? "All";
+        _includeDone = _filterMode is "Show All" or "Only Completed" or "Archived";
         _forecastMode = false;
         _inboxOnly = false;
         _focusedHeadingId = page.LastFocusedHeadingId;
-        _searchText = page.LastSearchText ?? "";
+        _searchText = "";
         SearchBox.Text = _searchText;
+        SearchBar.Visibility = Visibility.Collapsed;
         FilterCombo.SelectionChanged -= FilterCombo_SelectionChanged;
         FilterCombo.SelectedItem = _filterMode;
         FilterCombo.SelectionChanged += FilterCombo_SelectionChanged;
@@ -2735,9 +3672,132 @@ public partial class MainWindow : Window
         return null;
     }
 
+    // ── Multi-select delete with undo ─────────────────────────────────────────
+    private void ExecuteDeleteSelected()
+    {
+        if (IsInlineEditorFocused()) return;
+        var allSelected = TaskList.SelectedItems.OfType<TaskRowVm>().ToList();
+        if (allSelected.Count == 0) return;
+
+        var deletedTasks = new List<TaskItem>();
+        var deletedHeadings = new List<Heading>();
+        var orphanedTasks = new List<(Guid, Guid?)>();
+        var explicitlyDeletedTaskIds = new HashSet<Guid>();
+
+        // Collect tasks to delete first
+        foreach (var row in allSelected.Where(r => r.IsTask && !r.IsNewTask))
+        {
+            var task = FindTask(row.TaskId);
+            if (task is null) continue;
+            deletedTasks.Add(task);
+            explicitlyDeletedTaskIds.Add(task.Id);
+        }
+
+        // Collect headings; orphan their tasks (unless already being deleted)
+        foreach (var row in allSelected.Where(r => r.IsHeading && !r.IsNewHeading && r.HeadingId.HasValue))
+        {
+            var heading = FindHeading(row.HeadingId!.Value);
+            if (heading is null) continue;
+            deletedHeadings.Add(heading);
+            var headingTasks = CurrentTasks()
+                .Where(t => t.HeadingId == heading.Id && t.ArchivedAt is null
+                            && !explicitlyDeletedTaskIds.Contains(t.Id))
+                .ToList();
+            foreach (var t in headingTasks)
+            {
+                orphanedTasks.Add((t.Id, t.HeadingId));
+                t.HeadingId = null;
+                _db.SaveTask(t);
+            }
+        }
+
+        if (deletedTasks.Count == 0 && deletedHeadings.Count == 0) return;
+
+        foreach (var task in deletedTasks)
+        {
+            _db.DeleteTask(task.Id);
+            _db.DeleteRemindersForTask(task.Id);
+        }
+        foreach (var heading in deletedHeadings)
+            _db.DeleteHeading(heading.Id);
+
+        _pendingUndo = new UndoRecord(deletedTasks, deletedHeadings, orphanedTasks);
+
+        var totalItems = deletedTasks.Count + deletedHeadings.Count;
+        var label = totalItems == 1
+            ? (deletedHeadings.Count == 1 ? "Heading deleted." : "Task deleted.")
+            : $"{totalItems} items deleted.";
+        ShowUndoBar(label);
+        Refresh();
+    }
+
+    private void ShowUndoBar(string message)
+    {
+        UndoMessage.Text = message;
+        UndoBar.Visibility = Visibility.Visible;
+
+        _undoTimer?.Stop();
+        _undoTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+        _undoTimer.Tick += (_, _) => { _undoTimer.Stop(); HideUndoBar(); };
+        _undoTimer.Start();
+    }
+
+    private void HideUndoBar()
+    {
+        UndoBar.Visibility = Visibility.Collapsed;
+        _pendingUndo = null;
+    }
+
+    private void UndoButton_Click(object sender, RoutedEventArgs e)
+    {
+        _undoTimer?.Stop();
+        if (_pendingUndo is not { } undo) { HideUndoBar(); return; }
+
+        foreach (var task in undo.DeletedTasks)
+        {
+            task.DeletedAt = null;
+            _db.SaveTask(task);
+        }
+        foreach (var heading in undo.DeletedHeadings)
+        {
+            heading.DeletedAt = null;
+            _db.SaveHeading(heading);
+        }
+        foreach (var (taskId, originalHeadingId) in undo.OrphanedTasks)
+        {
+            var task = _db.GetTasks(includeArchived: true)
+                .FirstOrDefault(t => t.Id == taskId);
+            if (task is null) continue;
+            task.HeadingId = originalHeadingId;
+            _db.SaveTask(task);
+        }
+
+        HideUndoBar();
+        Refresh();
+    }
+
     // ── Sync placeholder ──────────────────────────────────────────────────────
     private void SyncButton_Click(object sender, RoutedEventArgs e)
-        => MessageBox.Show(this, "Sync is not yet implemented.", "Tasks", MessageBoxButton.OK, MessageBoxImage.Information);
+    {
+        var enabled = _db.GetSetting("sync_enabled") == "1";
+        var url = _db.GetSetting("supabase_url");
+        var key = _db.GetSetting("supabase_publishable_key");
+        if (!enabled || string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(key))
+        {
+            MessageBox.Show(this,
+                "Supabase sync is not configured yet. Open Settings to enable sync and add the project URL plus publishable key.",
+                "Sync",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        MessageBox.Show(this,
+            "Supabase settings are saved. Remote sync still needs the project schema, user sign-in/session wiring, and the outbox transport before data can be replicated safely.",
+            "Sync",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
 
     // ── Due-date double-click opens inline picker ─────────────────────────────
     private void DueText_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2830,6 +3890,17 @@ public partial class MainWindow : Window
             source = GetParentObject(source);
         }
         return null;
+    }
+
+    private static bool IsOriginalSourceWithin<T>(DependencyObject? source) where T : DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is T) return true;
+            source = GetParentObject(source);
+        }
+
+        return false;
     }
 
     private static DependencyObject? GetParentObject(DependencyObject source)

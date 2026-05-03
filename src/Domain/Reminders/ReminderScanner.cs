@@ -30,6 +30,13 @@ public static class ReminderScanner
 
             if (fireAt <= nowUtc)
             {
+                if (!rem.AutoSnoozeEnabled && rem.LastFiredAt is not null)
+                {
+                    rem.Status = ReminderStatus.Overdue;
+                    overdue++;
+                    continue;
+                }
+
                 rem.Status = ReminderStatus.Overdue;
                 rem.LastFiredAt = nowUtc;
                 rem.UpdatedAt = nowUtc;

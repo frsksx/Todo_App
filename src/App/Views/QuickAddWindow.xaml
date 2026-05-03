@@ -8,11 +8,12 @@
         ResizeMode="NoResize"
         Topmost="True"
         ShowInTaskbar="False"
-        Background="#FAFAFA"
+        Background="{StaticResource AppBackgroundBrush}"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True">
-    <StackPanel Margin="14">
-        <TextBlock Text="Task" FontSize="11" Foreground="#666666"/>
+    <Border Style="{StaticResource AppCardStyle}" Margin="12">
+    <StackPanel>
+        <TextBlock Text="Task" Style="{StaticResource AppLabelTextStyle}"/>
         <TextBox x:Name="TitleBox" Padding="8,6" FontSize="15" Margin="0,2,0,8"/>
 
         <Grid Margin="0,0,0,8">
@@ -22,15 +23,15 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                <TextBlock Text="Page" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="Page" Style="{StaticResource AppLabelTextStyle}"/>
                 <ComboBox x:Name="PageCombo" Margin="0,2,0,0" DisplayMemberPath="Name" SelectionChanged="PageCombo_SelectionChanged"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="6,0,6,0">
-                <TextBlock Text="Heading (optional)" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="Heading (optional)" Style="{StaticResource AppLabelTextStyle}"/>
                 <ComboBox x:Name="HeadingCombo" Margin="0,2,0,0" DisplayMemberPath="Title"/>
             </StackPanel>
             <StackPanel Grid.Column="2" Margin="6,0,0,0">
-                <TextBlock Text="Reminder" FontSize="11" Foreground="#666666"/>
+                <TextBlock Text="Reminder" Style="{StaticResource AppLabelTextStyle}"/>
                 <TextBox x:Name="ReminderBox" Padding="6,4" Margin="0,2,0,4"/>
                 <WrapPanel x:Name="ReminderPresets" Orientation="Horizontal"/>
             </StackPanel>
@@ -42,10 +43,11 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <CheckBox x:Name="KeepOpenCheck" Grid.Column="0" Content="Save and add another" VerticalAlignment="Center" Foreground="#666666"/>
+            <CheckBox x:Name="KeepOpenCheck" Grid.Column="0" Content="Save and add another" VerticalAlignment="Center"/>
             <Button Grid.Column="1" Content="Cancel" Width="84" Margin="0,0,8,0" Click="Cancel_Click" IsCancel="True"/>
-            <Button Grid.Column="2" Content="Save" Width="84" Click="Save_Click" IsDefault="True"/>
+            <Button Grid.Column="2" Content="Save" Width="84" Style="{StaticResource PrimaryButtonStyle}" Click="Save_Click" IsDefault="True"/>
         </Grid>
-        <TextBlock x:Name="HintText" Margin="0,8,0,0" Foreground="#888888" FontSize="11"/>
+        <TextBlock x:Name="HintText" Margin="0,8,0,0" Style="{StaticResource AppHintTextStyle}"/>
     </StackPanel>
+    </Border>
 </Window>

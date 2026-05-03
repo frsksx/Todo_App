@@ -8,6 +8,14 @@ public enum TaskState
     Waiting = 4,
     Someday = 5,
     Done = 6,
+    Archived = 7,
+}
+
+public enum TaskPriority
+{
+    Low = 1,
+    Medium = 2,
+    High = 3,
 }
 
 public enum ReminderStatus
@@ -61,6 +69,8 @@ public sealed class TaskItem
     public DateTime? DueAt { get; set; }
     public string? Recurrence { get; set; }
     public string? Link { get; set; }
+    public TaskPriority? Priority { get; set; }
+    public int? EffortHours { get; set; }
     public DateTime? CompletedAt { get; set; }
     public DateTime? ArchivedAt { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -83,6 +93,7 @@ public sealed class Reminder
     public ReminderStatus Status { get; set; } = ReminderStatus.Active;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
 }
 
 public sealed class Tag

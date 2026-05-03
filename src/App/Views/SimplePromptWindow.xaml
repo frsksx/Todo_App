@@ -5,14 +5,16 @@
         Width="380" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="#FAFAFA"
+        Background="{StaticResource AppBackgroundBrush}"
         ShowInTaskbar="False">
-    <StackPanel Margin="14">
-        <TextBlock x:Name="LabelText" Margin="0,0,0,6" FontSize="12" Foreground="#444444"/>
+    <Border Style="{StaticResource AppCardStyle}" Margin="12">
+    <StackPanel>
+        <TextBlock x:Name="LabelText" Margin="0,0,0,6" FontSize="12" Foreground="{StaticResource AppTextBrush}"/>
         <TextBox x:Name="InputBox" Padding="6,4" FontSize="13"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button Content="Cancel" Width="80" Margin="0,0,8,0" Click="Cancel_Click" IsCancel="True"/>
-            <Button Content="OK" Width="80" Click="Ok_Click" IsDefault="True"/>
+            <Button Content="OK" Width="80" Style="{StaticResource PrimaryButtonStyle}" Click="Ok_Click" IsDefault="True"/>
         </StackPanel>
     </StackPanel>
+    </Border>
 </Window>
